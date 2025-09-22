@@ -1,0 +1,23 @@
+{
+  "name": "dental-clinic-backend",
+  "version": "1.0.0",
+  "description": "",
+  "homepage": "https://github.com/Do-an-tot-nghiep-Phong-kham-nha-khoa/Dental-Clinic-Backend#readme",
+  "bugs": {
+    "url": "https://github.com/Do-an-tot-nghiep-Phong-kham-nha-khoa/Dental-Clinic-Backend/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Do-an-tot-nghiep-Phong-kham-nha-khoa/Dental-Clinic-Backend.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
