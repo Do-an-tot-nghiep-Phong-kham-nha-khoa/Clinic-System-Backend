@@ -1,16 +1,20 @@
 // index.js
 require("dotenv").config();
 const express = require("express");
-const connectDB = require("./config/db");
+const database = require("../config/database.js");
 
 const app = express();
 
-connectDB();
+database.connect();
 
 app.get('/', (req, res) => {
   res.send('Hello Node.js!')
 })
 
-app.listen(3000, () => {
-  console.log('Server running at http://localhost:3000')
+app.listen(process.env.PORT, () => {
+  console.log(`Server running at http://localhost:${process.env.PORT}`)
 })
+
+const patientRoutes = require("./routes/patientRoutes");
+
+app.use("/src/patients", patientRoutes);
