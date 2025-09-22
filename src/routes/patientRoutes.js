@@ -4,7 +4,7 @@ const Patient = require("../models/patient");
 const router = express.Router();
 
 // Đăng ký bệnh nhân mới
-router.post("/", async (req, res) => {
+router.post("/create", async (req, res) => {
   try {
     const { name, phone, email } = req.body;
     const patient = new Patient({ name, phone, email });
@@ -16,11 +16,14 @@ router.post("/", async (req, res) => {
 });
 
 // Lấy danh sách bệnh nhân
-router.get("/", async (req, res) => {
+router.get("/get", async (req, res) => {
   try {
+    console.log("Fetching patients...");
     const patients = await Patient.find();
+    console.log("Patients found:", patients);
     res.json(patients);
   } catch (err) {
+    console.error("Error fetching patients:", err);
     res.status(500).json({ message: err.message });
   }
 });
