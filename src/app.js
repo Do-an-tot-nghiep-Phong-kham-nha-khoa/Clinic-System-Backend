@@ -1,4 +1,5 @@
 // index.js
+
 require("dotenv").config();
 const express = require("express");
 const database = require("../config/database.js");
@@ -18,7 +19,8 @@ const medicineInPrescriptionRoutes = require("./routes/medicineInPrescriptionRou
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use("/src/patients", patientRoutes);
+
+app.use("/patients", patientRoutes);
 app.use("/api/services", serviceRoutes);
 app.use("/api/medicines", medicineRoutes);
 app.use("/api/laborders", labOrderRoutes);
@@ -30,6 +32,6 @@ app.get('/', (req, res) => {
   res.send('Hello Node.js!')
 })
 
-app.listen(process.env.PORT, () => {
-  console.log(`Server running at http://localhost:${process.env.PORT}`)
+app.listen(3000, () => {
+  console.log(`Server running at http://localhost:3000`)
 })
