@@ -9,10 +9,22 @@ database.connect();
 
 // ...
 const patientRoutes = require("./routes/patientRoutes");
+const serviceRoutes = require("./routes/serviceRoutes");
+const medicineRoutes = require("./routes/medicineRoutes");
+const labOrderRoutes = require("./routes/labOrderRoutes");
+const prescriptionRoutes = require("./routes/prescriptionRoutes");
+const invoiceRoutes = require("./routes/invoiceRoutes");
+const medicineInPrescriptionRoutes = require("./routes/medicineInPrescriptionRoutes");
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use("/src/patients", patientRoutes);
+app.use("/api/services", serviceRoutes);
+app.use("/api/medicines", medicineRoutes);
+app.use("/api/laborders", labOrderRoutes);
+app.use("/api/prescriptions", prescriptionRoutes);
+app.use("/api/invoices", invoiceRoutes);
+app.use("/api/medicineinprescriptions", medicineInPrescriptionRoutes);
 
 app.get('/', (req, res) => {
   res.send('Hello Node.js!')
