@@ -6,21 +6,22 @@ const patientSchema = new mongoose.Schema({
   dob: { type: Date },
   phone: { type: String, required: true, unique: true },
   email: { type: String, unique: true },
-  address: { type: String },
   password: { type: String, required: true },
+  address: { type: String },
+  gender: { type: String, enum: ["male", "female", "other"] },
   tokenUser: {
-        type: String,
-        default: generate.generateRandomString(20)
+    type: String,
+    default: generate.generateRandomString(20)
   },
   status: {
-      type: String,
-      default: "active"
-    },
-    deleted: {
-      type: Boolean,
-      default: false
-    },
-    deletedAt: Date
+    type: String,
+    default: "active"
+  },
+  deleted: {
+    type: Boolean,
+    default: false
+  },
+  deletedAt: Date
 }, {
   timestamps: true
 });
