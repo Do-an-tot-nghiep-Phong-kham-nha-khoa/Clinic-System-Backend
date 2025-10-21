@@ -13,20 +13,10 @@ class TreatmentController {
         appointment,
         treatmentDate,
         treatmentType,
-        teeth,
         diagnosis,
         treatment,
         medications,
-        materials,
-        procedures,
         totalCost,
-        notes,
-        beforeImages,
-        afterImages,
-        xrayImages,
-        followUpRequired,
-        followUpDate,
-        complications,
         patientReaction
       } = req.body;
 
@@ -69,22 +59,11 @@ class TreatmentController {
         appointment,
         treatmentDate: new Date(treatmentDate),
         treatmentType,
-        teeth,
         diagnosis,
         treatment,
         medications,
-        materials,
-        procedures,
         totalCost,
-        notes,
-        beforeImages,
-        afterImages,
-        xrayImages,
-        followUpRequired: followUpRequired || false,
-        followUpDate: followUpDate ? new Date(followUpDate) : null,
-        complications,
         patientReaction,
-        treatmentStatus: followUpRequired ? "Requires Follow-up" : "Completed"
       });
 
       const savedTreatment = await treatmentRecord.save();
@@ -102,7 +81,7 @@ class TreatmentController {
     } catch (err) {
       console.error("Error creating treatment:", err);
       res.status(400).json({ 
-        message: "Lỗi khi tạo hồ sơ điều trị",
+        message: "Error creating treatment",
         error: err.message 
       });
     }
@@ -133,7 +112,7 @@ class TreatmentController {
     } catch (err) {
       console.error("Error fetching treatments:", err);
       res.status(500).json({ 
-        message: "Lỗi khi lấy danh sách hồ sơ điều trị",
+        message: "Error fetching treatment records",
         error: err.message 
       });
     }

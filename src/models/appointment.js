@@ -43,8 +43,6 @@ const appointmentSchema = new mongoose.Schema({
         default: "Pending" 
     },
     reminderSent: { type: Boolean, default: false },
-    followUpRequired: { type: Boolean, default: false },
-    followUpDate: { type: Date },
     room: { type: String },
     cancelReason: { type: String }
 }, {

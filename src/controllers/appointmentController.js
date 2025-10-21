@@ -15,7 +15,6 @@ class AppointmentController {
         treatmentType, 
         notes, 
         symptoms, 
-        urgencyLevel,
         estimatedCost,
         room
       } = req.body;
@@ -62,7 +61,6 @@ class AppointmentController {
         treatmentType,
         notes,
         symptoms,
-        urgencyLevel: urgencyLevel || "Medium",
         estimatedCost,
         room
       });
