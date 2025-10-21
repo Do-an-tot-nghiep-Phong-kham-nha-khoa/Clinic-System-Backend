@@ -2,6 +2,12 @@ const express = require('express');
 const router = express.Router();
 const Service = require('../models/service');
 
+// Helper to generate next incremental id per collection
+async function getNextId(Model) {
+    const maxDoc = await Model.findOne().sort({ id: -1 }).select('id');
+    return (maxDoc?.id ?? 0) + 1;
+}
+
 router.get('/', async (req, res) => {
     try {
         const services = await Service.find();
@@ -12,13 +18,14 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-    const service = new Service({
-        id: req.body.id,
-        name: req.body.name,
-        price: req.body.price,
-        description: req.body.description
-    });
     try {
+        const nextId = await getNextId(Service);
+        const service = new Service({
+            id: nextId,
+            name: req.body.name,
+            price: req.body.price,
+            description: req.body.description
+        });
         const newService = await service.save();
         res.status(201).json(newService);
     } catch (error) {

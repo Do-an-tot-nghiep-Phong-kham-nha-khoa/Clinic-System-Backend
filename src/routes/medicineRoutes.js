@@ -2,12 +2,38 @@ const express = require('express');
 const router = express.Router();
 const Medicine = require('../models/medicine');
 
+// Helper to generate next incremental id per collection
+async function getNextId(Model) {
+    const maxDoc = await Model.findOne().sort({ id: -1 }).select('id');
+    return (maxDoc?.id ?? 0) + 1;
+}
+
 router.get('/', async (req, res) => {
     try {
         const medicines = await Medicine.find();
         res.json(medicines);
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+});
+
+router.post('/', async (req, res) => {
+    try {
+        const nextId = await getNextId(Medicine);
+        const medicine = new Medicine({
+            id: nextId,
+            name: req.body.name,
+            price: req.body.price,
+            quantity: req.body.quantity,
+            dosageForm: req.body.dosageForm,
+            manufacturer: req.body.manufacturer,
+            unit: req.body.unit,
+            expiryDate: req.body.expiryDate
+        });
+        const newMedicine = await medicine.save();
+        res.status(201).json(newMedicine);
+    } catch (error) {
+        res.status(400).json({ message: error.message });
     }
 });
 
@@ -21,25 +47,6 @@ router.get('/:id', async (req, res) => {
         }
     } catch (error) {
         res.status(500).json({ message: error.message });
-    }
-});
-
-router.post('/', async (req, res) => {
-    const medicine = new Medicine({
-        id: req.body.id,
-        name: req.body.name,
-        price: req.body.price,
-        quantity: req.body.quantity,
-        dosageForm: req.body.dosageForm,
-        manufacturer: req.body.manufacturer,
-        unit: req.body.unit,
-        expiryDate: req.body.expiryDate
-    });
-    try {
-        const newMedicine = await medicine.save();
-        res.status(201).json(newMedicine);
-    } catch (error) {
-        res.status(400).json({ message: error.message });
     }
 });
 
