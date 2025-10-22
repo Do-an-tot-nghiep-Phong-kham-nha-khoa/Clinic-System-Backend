@@ -1,29 +1,41 @@
-// index.js
 require("dotenv").config();
 const express = require("express");
 const database = require("../config/database.js");
 
 const app = express();
 
-database.connect();
-
 // ...
 const patientRoutes = require("./routes/patientRoutes");
 const doctorRoutes = require("./routes/doctorRoutes");
-const appointmentRoutes = require("./routes/appointmentRoutes");
 const treatmentRoutes = require("./routes/treatmentRoutes");
+
+app.use("/src/doctors", doctorRoutes);
+app.use("/src/treatments", treatmentRoutes);
+
+const serviceRoutes = require("./routes/serviceRoutes");
+const medicineRoutes = require("./routes/medicineRoutes");
+const labOrderRoutes = require("./routes/labOrderRoutes");
+const prescriptionRoutes = require("./routes/prescriptionRoutes");
+const invoiceRoutes = require("./routes/invoiceRoutes");
+
+app.use("/patients", patientRoutes);
+app.use("/api/services", serviceRoutes);
+app.use("/api/medicines", medicineRoutes);
+app.use("/api/laborders", labOrderRoutes);
+app.use("/api/prescriptions", prescriptionRoutes);
+app.use("/api/invoices", invoiceRoutes);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use("/src/patients", patientRoutes);
-app.use("/src/doctors", doctorRoutes);
-app.use("/src/appointments", appointmentRoutes);
-app.use("/src/treatments", treatmentRoutes);
+database.connect();
+
+const indexRoutes = require('./routes/indexRoutes');
+indexRoutes(app);
 
 app.get('/', (req, res) => {
   res.send('Hello Node.js!')
 })
 
-app.listen(process.env.PORT, () => {
-  console.log(`Server running at http://localhost:${process.env.PORT}`)
+app.listen(3000, () => {
+  console.log(`Server running at http://localhost:3000`)
 })

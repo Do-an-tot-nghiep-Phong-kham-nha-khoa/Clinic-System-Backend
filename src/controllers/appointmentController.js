@@ -1,276 +1,76 @@
-const Appointment = require("../models/appointment");
-const Doctor = require("../models/doctor");
-const Patient = require("../models/patient");
+const Appointment = require('../models/appointment');
+const Patient = require('../models/patient');
+const Doctor = require('../models/doctor');
 
-class AppointmentController {
-  // Tạo cuộc hẹn mới
-  async createAppointment(req, res) {
-    try {
-      const { 
-        patient, 
-        doctor, 
-        nurse, 
-        appointmentDate, 
-        appointmentTime, 
-        treatmentType, 
-        notes, 
-        symptoms, 
-        estimatedCost,
-        room
-      } = req.body;
+// [POST] /appointments
+module.exports.create = async (req, res) => {
+    try{
+        const {booker_id, profileId, profileModel, doctor_id, specialty_id, appointmentDate, timeSlot, reason} = req.body;
+        
+        // Check validate 
+        if(!booker_id || !profileId || !profileModel || !doctor_id || !specialty_id || !appointmentDate || !timeSlot || !reason) {
+            return  res.status(400).json({ message: 'Missing required fields' });
+        }
 
-      // Validate required fields
-      if (!patient || !doctor || !appointmentDate || !appointmentTime || !treatmentType) {
-        return res.status(400).json({ 
-          message: "Thiếu thông tin bắt buộc: patient, doctor, appointmentDate, appointmentTime, treatmentType" 
+        // Identify patient
+        const patient = await Patient.findById(booker_id);
+        if(!patient) {
+            return res.status(404).json({ message: 'Patient not found' });
+        }
+
+        // Đặt lịch hẹn theo bác sĩ hoặc theo chuyên khoa
+        let specialty = null;
+        let doctor = null;
+        let status = 'waiting_assigned';
+
+        // Nếu có doctorId, đặt theo bác sĩ
+        if(doctor_id) {
+            doctor = await Doctor.findById(doctor_id);
+            if(!doctor) {
+                return res.status(404).json({ message: 'Doctor not found' });
+            }
+            // Lấy chuyên khoa từ bác sĩ
+            specialty = doctor.specialtyId;
+
+            // Kiểm tra trùng lịch
+            const existedAppointment = await Appointment.findOne({
+                doctor_id: doctor._id,
+                appointmentDate,
+                timeSlot,
+                status: { $in: [ 'pending', 'confirmed'] }
+            });
+            if(existedAppointment) {
+                return res.status(400).json({ message: 'Time slot already booked for this doctor' });
+            }
+        } else {
+            // Nếu không có doctorId, đặt theo chuyên khoa
+            specialty = await Specialty.findById(specialty_id);
+            if(!specialty) {
+                return res.status(404).json({ message: 'Specialty not found' });
+            }
+            status = "waiting_assigned";
+        }
+
+        // Tạo lịch hẹn mới
+        const newAppointment = new Appointment({
+            booker_id: booker_id,
+            profile: profileId,
+            profileModel,
+            doctor_id: doctor ? doctor._id : null,
+            specialty_id: specialty._id,
+            appointmentDate,
+            timeSlot,
+            reason,
+            status
         });
-      }
-
-      // Check if doctor exists
-      const doctorExists = await Doctor.findById(doctor);
-      if (!doctorExists) {
-        return res.status(404).json({ message: "Không tìm thấy bác sĩ" });
-      }
-
-      // Check if patient exists
-      const patientExists = await Patient.findById(patient);
-      if (!patientExists) {
-        return res.status(404).json({ message: "Không tìm thấy bệnh nhân" });
-      }
-
-      // Check for appointment conflicts (same doctor, date, and time)
-      const conflictingAppointment = await Appointment.findOne({
-        doctor,
-        appointmentDate: new Date(appointmentDate),
-        appointmentTime,
-        status: { $nin: ['Cancelled', 'Completed'] }
-      });
-
-      if (conflictingAppointment) {
-        return res.status(409).json({ 
-          message: "Bác sĩ đã có cuộc hẹn vào thời gian này" 
-        });
-      }
-
-      const appointment = new Appointment({
-        patient,
-        doctor,
-        nurse,
-        appointmentDate: new Date(appointmentDate),
-        appointmentTime,
-        treatmentType,
-        notes,
-        symptoms,
-        estimatedCost,
-        room
-      });
-
-      const savedAppointment = await appointment.save();
-      
-      // Populate the saved appointment with doctor and patient details
-      const populatedAppointment = await Appointment.findById(savedAppointment._id)
-        .populate('doctor', 'name email expertise')
-        .populate('patient', 'name email phone')
-        .populate('nurse', 'name department');
-
-      res.status(201).json({
-        message: "Tạo cuộc hẹn thành công",
-        data: populatedAppointment
-      });
-    } catch (err) {
-      console.error("Error creating appointment:", err);
-      res.status(400).json({ 
-        message: "Lỗi khi tạo cuộc hẹn",
-        error: err.message 
-      });
+        await newAppointment.save();
+        if(status === 'pending') {
+            return res.status(201).json({ message: 'Appointment booked with doctor successfully', appointment: newAppointment });
+        } else {
+            return res.status(201).json({ message: 'Appointment booked with specialty successfully', appointment: newAppointment });
+        }
+    } catch (error) {
+        console.error('Error creating appointment:', error);
+        return res.status(500).json({ message: 'Internal server error' });
     }
-  }
-
-  // Lấy tất cả cuộc hẹn
-  async getAllAppointments(req, res) {
-    try {
-      const { status, doctor, date } = req.query;
-      let filter = {};
-
-      if (status) filter.status = status;
-      if (doctor) filter.doctor = doctor;
-      if (date) filter.appointmentDate = new Date(date);
-
-      const appointments = await Appointment.find(filter)
-        .populate('doctor', 'name email expertise')
-        .populate('patient', 'name email phone')
-        .populate('nurse', 'name department')
-        .sort({ appointmentDate: 1, appointmentTime: 1 });
-      
-      res.status(200).json({
-        message: "Lấy danh sách cuộc hẹn thành công",
-        count: appointments.length,
-        data: appointments
-      });
-    } catch (err) {
-      console.error("Error fetching appointments:", err);
-      res.status(500).json({ 
-        message: "Lỗi khi lấy danh sách cuộc hẹn",
-        error: err.message 
-      });
-    }
-  }
-
-  // Lấy cuộc hẹn theo ID
-  async getAppointmentById(req, res) {
-    try {
-      const { id } = req.params;
-      const appointment = await Appointment.findById(id)
-        .populate('doctor', 'name email expertise phone')
-        .populate('patient', 'name email phone address')
-        .populate('nurse', 'name department phone');
-
-      if (!appointment) {
-        return res.status(404).json({ 
-          message: "Không tìm thấy cuộc hẹn" 
-        });
-      }
-
-      res.status(200).json({
-        message: "Lấy thông tin cuộc hẹn thành công",
-        data: appointment
-      });
-    } catch (err) {
-      console.error("Error fetching appointment by ID:", err);
-      res.status(500).json({ 
-        message: "Lỗi khi lấy thông tin cuộc hẹn",
-        error: err.message 
-      });
-    }
-  }
-
-  // Cập nhật cuộc hẹn
-  async updateAppointment(req, res) {
-    try {
-      const { id } = req.params;
-      const updateData = req.body;
-
-      // Remove fields that shouldn't be updated directly
-      delete updateData._id;
-      delete updateData.createdAt;
-      delete updateData.updatedAt;
-
-      const updatedAppointment = await Appointment.findByIdAndUpdate(
-        id, 
-        updateData, 
-        { new: true, runValidators: true }
-      ).populate('doctor', 'name email expertise')
-       .populate('patient', 'name email phone')
-       .populate('nurse', 'name department');
-
-      if (!updatedAppointment) {
-        return res.status(404).json({ 
-          message: "Không tìm thấy cuộc hẹn để cập nhật" 
-        });
-      }
-
-      res.status(200).json({
-        message: "Cập nhật cuộc hẹn thành công",
-        data: updatedAppointment
-      });
-    } catch (err) {
-      console.error("Error updating appointment:", err);
-      res.status(400).json({ 
-        message: "Lỗi khi cập nhật cuộc hẹn",
-        error: err.message 
-      });
-    }
-  }
-
-  // Hủy cuộc hẹn
-  async cancelAppointment(req, res) {
-    try {
-      const { id } = req.params;
-      const { cancelReason } = req.body;
-
-      const cancelledAppointment = await Appointment.findByIdAndUpdate(
-        id,
-        { 
-          status: "Cancelled", 
-          cancelReason: cancelReason || "No reason provided" 
-        },
-        { new: true }
-      ).populate('doctor', 'name email')
-       .populate('patient', 'name email phone');
-
-      if (!cancelledAppointment) {
-        return res.status(404).json({ 
-          message: "Không tìm thấy cuộc hẹn để hủy" 
-        });
-      }
-
-      res.status(200).json({
-        message: "Hủy cuộc hẹn thành công",
-        data: cancelledAppointment
-      });
-    } catch (err) {
-      console.error("Error cancelling appointment:", err);
-      res.status(500).json({ 
-        message: "Lỗi khi hủy cuộc hẹn",
-        error: err.message 
-      });
-    }
-  }
-
-  // Lấy cuộc hẹn theo bác sĩ
-  async getAppointmentsByDoctor(req, res) {
-    try {
-      const { doctorId } = req.params;
-      const { date, status } = req.query;
-
-      let filter = { doctor: doctorId };
-      if (date) filter.appointmentDate = new Date(date);
-      if (status) filter.status = status;
-
-      const appointments = await Appointment.find(filter)
-        .populate('patient', 'name email phone')
-        .populate('nurse', 'name department')
-        .sort({ appointmentDate: 1, appointmentTime: 1 });
-
-      res.status(200).json({
-        message: "Lấy danh sách cuộc hẹn theo bác sĩ thành công",
-        doctorId,
-        count: appointments.length,
-        data: appointments
-      });
-    } catch (err) {
-      console.error("Error fetching appointments by doctor:", err);
-      res.status(500).json({ 
-        message: "Lỗi khi lấy cuộc hẹn theo bác sĩ",
-        error: err.message 
-      });
-    }
-  }
-
-  // Lấy cuộc hẹn theo bệnh nhân
-  async getAppointmentsByPatient(req, res) {
-    try {
-      const { patientId } = req.params;
-      
-      const appointments = await Appointment.find({ patient: patientId })
-        .populate('doctor', 'name email expertise')
-        .populate('nurse', 'name department')
-        .sort({ appointmentDate: -1 });
-
-      res.status(200).json({
-        message: "Lấy danh sách cuộc hẹn theo bệnh nhân thành công",
-        patientId,
-        count: appointments.length,
-        data: appointments
-      });
-    } catch (err) {
-      console.error("Error fetching appointments by patient:", err);
-      res.status(500).json({ 
-        message: "Lỗi khi lấy cuộc hẹn theo bệnh nhân",
-        error: err.message 
-      });
-    }
-  }
 }
-
-module.exports = new AppointmentController();
