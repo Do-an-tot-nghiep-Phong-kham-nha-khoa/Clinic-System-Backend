@@ -16,13 +16,9 @@ const treatmentSchema = new mongoose.Schema({
         ref: 'Appointment'
     },
     treatmentDate: { type: Date, required: true },
-    treatmentType: { 
-        type: String, 
-        required: true 
-    },
     diagnosis: { type: String, required: true },
-    treatment: { type: String, required: true },
-    medications: [{
+    laborder: { type: String, required: true },
+    prescription: [{
         name: { type: String, required: true },
         dosage: { type: String, required: true },
         frequency: { type: String, required: true },
@@ -30,17 +26,6 @@ const treatmentSchema = new mongoose.Schema({
         instructions: { type: String }
     }],
     totalCost: { type: Number, required: true },
-    paymentStatus: { 
-        type: String, 
-        enum: ["Pending", "Partial", "Paid"],
-        default: "Pending" 
-    },
-    notes: { type: String },
-    treatmentStatus: { 
-        type: String, 
-        enum: ["In-Progress", "Completed", "Requires Follow-up"],
-        default: "Completed" 
-    }
 }, {
     timestamps: true
 });

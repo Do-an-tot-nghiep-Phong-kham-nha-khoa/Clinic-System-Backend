@@ -1,41 +1,59 @@
 const Doctor = require("../models/doctor");
 
 class DoctorController {
-  // Tạo bác sĩ mới
+  // Tạo bác sĩ mới (theo model mới: name, specialtyId, phone, email, password, experience, schedule[])
   async createDoctor(req, res) {
     try {
-      const { name, phone, email, gender, address, expertise } = req.body;
+      const { name, specialtyId, phone, email, password, experience, schedule } = req.body;
 
       // Validate required fields
-      if (!name || !phone || !email || !gender || !expertise) {
-        return res.status(400).json({ 
-          message: "Thiếu thông tin bắt buộc: name, phone, email, gender, expertise" 
+      if (!name || !specialtyId) {
+        return res.status(400).json({
+          message: "Thiếu thông tin bắt buộc: name, specialtyId"
         });
       }
 
-      // Check if doctor with same email or phone already exists
-      const existingDoctor = await Doctor.findOne({ 
-        $or: [{ email }, { phone }] 
+      // Optional duplicate check for email/phone if provided
+      if (email || phone) {
+        const existingDoctor = await Doctor.findOne({
+          $or: [email ? { email } : null, phone ? { phone } : null].filter(Boolean)
+        });
+        if (existingDoctor) {
+          return res.status(400).json({
+            message: "Bác sĩ với email hoặc số điện thoại này đã tồn tại"
+          });
+        }
+      }
+
+      // Basic schedule validation (if provided)
+      let normalizedSchedule = undefined;
+      if (Array.isArray(schedule)) {
+        normalizedSchedule = schedule.map((s) => ({
+          day: s.day,
+          timeSlots: Array.isArray(s.timeSlots) ? s.timeSlots : []
+        }));
+      }
+
+      const doctor = new Doctor({
+        name,
+        specialtyId,
+        phone,
+        email,
+        password,
+        experience,
+        schedule: normalizedSchedule
       });
-
-      if (existingDoctor) {
-        return res.status(400).json({ 
-          message: "Bác sĩ với email hoặc số điện thoại này đã tồn tại" 
-        });
-      }
-
-      const doctor = new Doctor({ name, phone, email, gender, address, expertise });
       const savedDoctor = await doctor.save();
-      
+
       res.status(201).json({
         message: "Tạo bác sĩ thành công",
         data: savedDoctor
       });
     } catch (err) {
       console.error("Error creating doctor:", err);
-      res.status(400).json({ 
+      res.status(400).json({
         message: "Lỗi khi tạo bác sĩ",
-        error: err.message 
+        error: err.message
       });
     }
   }
@@ -43,8 +61,14 @@ class DoctorController {
   // Lấy danh sách tất cả bác sĩ
   async getAllDoctors(req, res) {
     try {
-      console.log("Fetching all doctors...");
-      const doctors = await Doctor.find().sort({ createdAt: -1 });
+  console.log("Fetching all doctors...");
+  // Support filter by specialtyId and name via query
+  const { specialtyId, name } = req.query;
+  const filter = {};
+  if (specialtyId) filter.specialtyId = specialtyId;
+  if (name) filter.name = new RegExp(name, "i");
+
+  const doctors = await Doctor.find(filter);
       
       res.status(200).json({
         message: "Lấy danh sách bác sĩ thành công",
@@ -146,7 +170,7 @@ class DoctorController {
     }
   }
 
-  // Tìm kiếm bác sĩ theo tên hoặc chuyên khoa
+  // Tìm kiếm bác sĩ theo tên, email, phone hoặc ngày làm việc
   async searchDoctors(req, res) {
     try {
       const { query } = req.query;
@@ -161,10 +185,11 @@ class DoctorController {
       const doctors = await Doctor.find({
         $or: [
           { name: searchRegex },
-          { "expertise.name": searchRegex },
-          { "expertise.description": searchRegex }
+          { email: searchRegex },
+          { phone: searchRegex },
+          { "schedule.day": searchRegex }
         ]
-      }).sort({ createdAt: -1 });
+      });
 
       res.status(200).json({
         message: "Tìm kiếm bác sĩ thành công",
@@ -180,19 +205,15 @@ class DoctorController {
     }
   }
 
-  // Lấy bác sĩ theo chuyên khoa
+  // Lấy bác sĩ theo chuyên khoa (mapping route param 'expertise' -> specialtyId)
   async getDoctorsByExpertise(req, res) {
     try {
-      const { expertise } = req.params;
-      const searchRegex = new RegExp(expertise, 'i');
-      
-      const doctors = await Doctor.find({
-        "expertise.name": searchRegex
-      }).sort({ createdAt: -1 });
+      const { expertise } = req.params; // actually specialtyId
+      const doctors = await Doctor.find({ specialtyId: expertise });
 
       res.status(200).json({
-        message: "Lấy danh sách bác sĩ theo chuyên khoa thành công",
-        expertise: expertise,
+        message: "Lấy danh sách bác sĩ theo chuyên khoa (specialty) thành công",
+        specialtyId: expertise,
         count: doctors.length,
         data: doctors
       });

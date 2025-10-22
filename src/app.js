@@ -5,20 +5,12 @@ const database = require("../config/database.js");
 const app = express();
 
 // ...
-const patientRoutes = require("./routes/patientRoutes");
-const doctorRoutes = require("./routes/doctorRoutes");
-const treatmentRoutes = require("./routes/treatmentRoutes");
-
-app.use("/src/doctors", doctorRoutes);
-app.use("/src/treatments", treatmentRoutes);
-
 const serviceRoutes = require("./routes/serviceRoutes");
 const medicineRoutes = require("./routes/medicineRoutes");
 const labOrderRoutes = require("./routes/labOrderRoutes");
 const prescriptionRoutes = require("./routes/prescriptionRoutes");
 const invoiceRoutes = require("./routes/invoiceRoutes");
 
-app.use("/patients", patientRoutes);
 app.use("/api/services", serviceRoutes);
 app.use("/api/medicines", medicineRoutes);
 app.use("/api/laborders", labOrderRoutes);
