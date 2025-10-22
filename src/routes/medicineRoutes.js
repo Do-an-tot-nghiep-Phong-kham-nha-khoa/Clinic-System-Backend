@@ -9,6 +9,8 @@ async function getNextId(Model) {
     return (maxDoc?.id ?? 0) + 1;
 }
 
+// /api/medicines?q=amox
+// /api/medicines?page=2&limit=10&sort=-price&q=acme
 router.get('/', async (req, res) => {
     try {
         const paging = getPagingParams(req.query, { sortBy: 'id', defaultLimit: 10, maxLimit: 200 });

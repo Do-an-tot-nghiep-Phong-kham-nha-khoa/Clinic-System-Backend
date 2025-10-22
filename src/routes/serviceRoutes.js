@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Service = require('../models/service');
+const { getPagingParams, applyPagingAndSortingToQuery, buildMeta, buildSearchFilter } = require('../helpers/query');
 
 // Helper to generate next incremental id per collection
 async function getNextId(Model) {
@@ -8,10 +9,31 @@ async function getNextId(Model) {
     return (maxDoc?.id ?? 0) + 1;
 }
 
+// /api/services?page=2&limit=10&sort=-price
+// /api/services?q=teeth&minPrice=20&maxPrice=100
+// /api/services?id=7
 router.get('/', async (req, res) => {
     try {
-        const services = await Service.find();
-        res.json(services);
+        const paging = getPagingParams(req.query, { sortBy: 'id', defaultLimit: 20, maxLimit: 200 });
+
+        // Build filter
+        const filter = {};
+        // Search across name and description via ?q=
+        const search = buildSearchFilter(req.query, ['name', 'description']);
+        if (search.$or) filter.$or = search.$or;
+        // Exact id match
+        if (req.query.id) filter.id = Number(req.query.id);
+        // Price range
+        if (req.query.minPrice || req.query.maxPrice) {
+            filter.price = {};
+            if (req.query.minPrice) filter.price.$gte = Number(req.query.minPrice);
+            if (req.query.maxPrice) filter.price.$lte = Number(req.query.maxPrice);
+        }
+
+        const total = await Service.countDocuments(filter);
+        const query = applyPagingAndSortingToQuery(Service.find(filter), paging);
+        const items = await query.lean();
+        res.json({ data: items, meta: buildMeta(total, paging.page, paging.limit) });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

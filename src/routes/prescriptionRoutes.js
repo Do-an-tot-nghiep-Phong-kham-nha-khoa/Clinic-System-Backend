@@ -3,6 +3,7 @@ const router = express.Router();
 const Prescription = require('../models/prescription');
 const MedicineInPrescription = require('../models/medicineInPrescription');
 const Medicine = require('../models/medicine');
+const { getPagingParams, buildPipelineStages, buildMeta, buildSearchFilter } = require('../helpers/query');
 
 // Helper to generate next incremental id per collection
 async function getNextId(Model) {
@@ -10,14 +11,52 @@ async function getNextId(Model) {
     return (maxDoc?.id ?? 0) + 1;
 }
 
+// /api/prescriptions?page=2&limit=10&sort=-createAt
+// /api/prescriptions?medicineId=12&q=500mg
+// /api/prescriptions?dateFrom=2025-10-01&dateTo=2025-10-31&q=ACME
 router.get('/', async (req, res) => {
     try {
-        const results = await Prescription.aggregate([
+        const paging = getPagingParams(req.query, { sortBy: 'id', defaultLimit: 20, maxLimit: 200 });
+
+        // Root-level filters before lookups
+        const rootMatch = {};
+        if (req.query.id) rootMatch.id = Number(req.query.id);
+        if (req.query.dateFrom || req.query.dateTo) {
+            rootMatch.createAt = {};
+            if (req.query.dateFrom) rootMatch.createAt.$gte = new Date(req.query.dateFrom);
+            if (req.query.dateTo) rootMatch.createAt.$lte = new Date(req.query.dateTo);
+        }
+
+        const pipeline = [];
+        if (Object.keys(rootMatch).length) pipeline.push({ $match: rootMatch });
+
+        // Join items (MedicineInPrescription)
+        pipeline.push(
             { $lookup: { from: 'medicineinprescriptions', localField: 'id', foreignField: 'prescriptionId', as: 'items' } },
-            { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } },
+            { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } }
+        );
+
+        // Optional filter by medicineId
+        if (req.query.medicineId) {
+            pipeline.push({ $match: { 'items.medicineId': Number(req.query.medicineId) } });
+        }
+
+        // Join medicine and support search
+        pipeline.push(
             { $lookup: { from: 'medicines', localField: 'items.medicineId', foreignField: 'id', as: 'medicine' } },
             { $unwind: { path: '$medicine', preserveNullAndEmptyArrays: true } },
-            { $addFields: { 'items.medicine': '$medicine' } },
+            { $addFields: { 'items.medicine': '$medicine', idStr: { $toString: '$id' } } }
+        );
+
+        // Text search across item fields and medicine fields
+        const search = buildSearchFilter(req.query, [
+            'items.dosage', 'items.frequency', 'items.duration', 'items.instruction',
+            'medicine.name', 'medicine.manufacturer', 'idStr'
+        ]);
+        if (Object.keys(search).length) pipeline.push({ $match: search });
+
+        // Group back and project
+        pipeline.push(
             {
                 $group: {
                     _id: '$_id',
@@ -40,8 +79,18 @@ router.get('/', async (req, res) => {
                     }
                 }
             }
+        );
+
+        // Data and total in parallel
+        const prePagingPipeline = [...pipeline];
+        const dataPipeline = [...prePagingPipeline, ...buildPipelineStages(paging)];
+        const [data, countArr] = await Promise.all([
+            Prescription.aggregate(dataPipeline),
+            Prescription.aggregate([...prePagingPipeline, { $count: 'total' }])
         ]);
-        res.json(results);
+        const total = countArr[0]?.total || 0;
+
+        res.json({ data, meta: buildMeta(total, paging.page, paging.limit) });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
