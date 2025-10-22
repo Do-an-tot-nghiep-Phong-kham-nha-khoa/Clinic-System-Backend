@@ -1,4 +1,4 @@
-const patientsRoutes = require('./patientsRoutes');
+const patientsRoutes = require('./patientRoutes');
 const appointmentsRoutes = require('./appointmentRoutes');
 
 const express = require('express');

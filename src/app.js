@@ -3,14 +3,12 @@ const express = require("express");
 const database = require("../config/database.js");
 
 const app = express();
-
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 database.connect();
 
 const indexRoutes = require('./routes/indexRoutes');
 indexRoutes(app);
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
 app.get('/', (req, res) => {
   res.send('Hello Node.js!')
