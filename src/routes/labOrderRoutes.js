@@ -3,6 +3,7 @@ const router = express.Router();
 const LabOrder = require('../models/labOrder');
 const ServiceInLabOrder = require('../models/serviceInLabOrder');
 const Service = require('../models/service');
+const { getPagingParams, buildPipelineStages, buildMeta, buildSearchFilter } = require('../helpers/query');
 
 // Helper to generate next incremental id per collection
 async function getNextId(Model) {
@@ -10,15 +11,53 @@ async function getNextId(Model) {
     return (maxDoc?.id ?? 0) + 1;
 }
 
+// /api/laborders?page=2&limit=10&sort=-testTime
+// /api/laborders?dateFrom=2025-10-01&dateTo=2025-10-31&q=urinalysis
+// /api/laborders?serviceId=22&minTotalPrice=100&sortBy=totalPrice&sortOrder=desc
 router.get('/', async (req, res) => {
     try {
-        // Enrich lab orders with their items (ServiceInLabOrder) and each item's Service details
-        const results = await LabOrder.aggregate([
+        const paging = getPagingParams(req.query, { sortBy: 'id', defaultLimit: 20, maxLimit: 200 });
+
+        // Root-level filters (before lookups)
+        const rootMatch = {};
+        if (req.query.id) rootMatch.id = Number(req.query.id);
+        if (req.query.dateFrom || req.query.dateTo) {
+            rootMatch.testTime = {};
+            if (req.query.dateFrom) rootMatch.testTime.$gte = new Date(req.query.dateFrom);
+            if (req.query.dateTo) rootMatch.testTime.$lte = new Date(req.query.dateTo);
+        }
+        if (req.query.minTotalPrice || req.query.maxTotalPrice) {
+            rootMatch.totalPrice = {};
+            if (req.query.minTotalPrice) rootMatch.totalPrice.$gte = Number(req.query.minTotalPrice);
+            if (req.query.maxTotalPrice) rootMatch.totalPrice.$lte = Number(req.query.maxTotalPrice);
+        }
+
+        const pipeline = [];
+        if (Object.keys(rootMatch).length) pipeline.push({ $match: rootMatch });
+
+        // Join items and optionally filter by serviceId
+        pipeline.push(
             { $lookup: { from: 'serviceinlaborders', localField: 'id', foreignField: 'labOrderId', as: 'items' } },
-            { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } },
+            { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } }
+        );
+
+        if (req.query.serviceId) {
+            pipeline.push({ $match: { 'items.serviceId': Number(req.query.serviceId) } });
+        }
+
+        // Join services and support search
+        pipeline.push(
             { $lookup: { from: 'services', localField: 'items.serviceId', foreignField: 'id', as: 'service' } },
             { $unwind: { path: '$service', preserveNullAndEmptyArrays: true } },
-            { $addFields: { 'items.service': '$service' } },
+            { $addFields: { 'items.service': '$service', idStr: { $toString: '$id' } } }
+        );
+
+        // Text search across service and item descriptions, and id string
+        const search = buildSearchFilter(req.query, ['items.description', 'service.name', 'service.description', 'idStr']);
+        if (Object.keys(search).length) pipeline.push({ $match: search });
+
+        // Group back to one doc per LabOrder and project
+        pipeline.push(
             {
                 $group: {
                     _id: '$_id',
@@ -47,8 +86,19 @@ router.get('/', async (req, res) => {
                     }
                 }
             }
+        );
+
+        // Prepare pipelines for data and total count
+        const prePagingPipeline = [...pipeline];
+        const dataPipeline = [...prePagingPipeline, ...buildPipelineStages(paging)];
+
+        const [data, countArr] = await Promise.all([
+            LabOrder.aggregate(dataPipeline),
+            LabOrder.aggregate([...prePagingPipeline, { $count: 'total' }])
         ]);
-        res.json(results);
+        const total = countArr[0]?.total || 0;
+
+        res.json({ data, meta: buildMeta(total, paging.page, paging.limit) });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

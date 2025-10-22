@@ -16,6 +16,7 @@ const invoiceSchema = new mongoose.Schema({
     },
     status: {
         type: String,
+        enum: ['Paid', 'Cancelled', 'Pending', 'Refunded'],
         required: true
     },
     prescriptionId: {
