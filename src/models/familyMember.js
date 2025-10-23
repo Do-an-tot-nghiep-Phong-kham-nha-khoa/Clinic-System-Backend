@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 const familyMemberSchema = new mongoose.Schema({
-  patientId: { type: mongoose.Schema.Types.ObjectId, ref: "Patient", required: true },
+  bookerId: { type: mongoose.Schema.Types.ObjectId, ref: "Patient", required: true },
   name: { type: String, required: true },
   relationship: { type: String, required: true }, // vd: "cha", "mẹ", "con"
   dob: { type: Date },
