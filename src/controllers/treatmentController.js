@@ -87,10 +87,10 @@ class TreatmentController {
     }
   }
 
-  // Lấy tất cả hồ sơ điều trị
+  // Lấy tất cả hồ sơ điều trị (hỗ trợ tìm kiếm + phân trang)
   async getAllTreatments(req, res) {
     try {
-      const { patient, doctor, treatmentType, status } = req.query;
+      const { patient, doctor, treatmentType, status, q, page = 1, limit = 10 } = req.query;
       let filter = {};
 
       if (patient) filter.patient = patient;
@@ -98,16 +98,41 @@ class TreatmentController {
       if (treatmentType) filter.treatmentType = new RegExp(treatmentType, 'i');
       if (status) filter.treatmentStatus = status;
 
-      const treatments = await Treatment.find(filter)
-        .populate('doctor', 'name email expertise')
-        .populate('patient', 'name email phone')
-        .populate('appointment', 'appointmentDate appointmentTime')
-        .sort({ treatmentDate: -1 });
+      // Free text search across key fields
+      if (q) {
+        const searchRegex = new RegExp(q, 'i');
+        filter.$or = [
+          { treatmentType: searchRegex },
+          { diagnosis: searchRegex },
+          { treatment: searchRegex },
+          { patientReaction: searchRegex }
+        ];
+      }
+
+      const pageNumber = Math.max(parseInt(page) || 1, 1);
+      const pageSize = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
+
+      const [items, total] = await Promise.all([
+        Treatment.find(filter)
+          .populate('doctor', 'name email expertise')
+          .populate('patient', 'name email phone')
+          .populate('appointment', 'appointmentDate appointmentTime')
+          .sort({ treatmentDate: -1 })
+          .skip((pageNumber - 1) * pageSize)
+          .limit(pageSize),
+        Treatment.countDocuments(filter)
+      ]);
       
       res.status(200).json({
         message: "Lấy danh sách hồ sơ điều trị thành công",
-        count: treatments.length,
-        data: treatments
+        count: items.length,
+        data: items,
+        pagination: {
+          page: pageNumber,
+          pageSize,
+          totalItems: total,
+          totalPages: Math.ceil(total / pageSize)
+        }
       });
     } catch (err) {
       console.error("Error fetching treatments:", err);
@@ -209,21 +234,37 @@ class TreatmentController {
     }
   }
 
-  // Lấy hồ sơ điều trị theo bệnh nhân
+  // Lấy hồ sơ điều trị theo bệnh nhân (phân trang)
   async getTreatmentsByPatient(req, res) {
     try {
       const { patientId } = req.params;
-      
-      const treatments = await Treatment.find({ patient: patientId })
-        .populate('doctor', 'name email expertise')
-        .populate('appointment', 'appointmentDate appointmentTime')
-        .sort({ treatmentDate: -1 });
+      const { page = 1, limit = 10 } = req.query;
+
+      const pageNumber = Math.max(parseInt(page) || 1, 1);
+      const pageSize = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
+
+      const filter = { patient: patientId };
+      const [items, total] = await Promise.all([
+        Treatment.find(filter)
+          .populate('doctor', 'name email expertise')
+          .populate('appointment', 'appointmentDate appointmentTime')
+          .sort({ treatmentDate: -1 })
+          .skip((pageNumber - 1) * pageSize)
+          .limit(pageSize),
+        Treatment.countDocuments(filter)
+      ]);
 
       res.status(200).json({
         message: "Lấy hồ sơ điều trị theo bệnh nhân thành công",
         patientId,
-        count: treatments.length,
-        data: treatments
+        count: items.length,
+        data: items,
+        pagination: {
+          page: pageNumber,
+          pageSize,
+          totalItems: total,
+          totalPages: Math.ceil(total / pageSize)
+        }
       });
     } catch (err) {
       console.error("Error fetching treatments by patient:", err);
@@ -234,11 +275,11 @@ class TreatmentController {
     }
   }
 
-  // Lấy hồ sơ điều trị theo bác sĩ
+  // Lấy hồ sơ điều trị theo bác sĩ (phân trang)
   async getTreatmentsByDoctor(req, res) {
     try {
       const { doctorId } = req.params;
-      const { startDate, endDate } = req.query;
+      const { startDate, endDate, page = 1, limit = 10 } = req.query;
 
       let filter = { doctor: doctorId };
       
@@ -249,16 +290,30 @@ class TreatmentController {
         };
       }
 
-      const treatments = await Treatment.find(filter)
-        .populate('patient', 'name email phone')
-        .populate('appointment', 'appointmentDate appointmentTime')
-        .sort({ treatmentDate: -1 });
+      const pageNumber = Math.max(parseInt(page) || 1, 1);
+      const pageSize = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
+
+      const [items, total] = await Promise.all([
+        Treatment.find(filter)
+          .populate('patient', 'name email phone')
+          .populate('appointment', 'appointmentDate appointmentTime')
+          .sort({ treatmentDate: -1 })
+          .skip((pageNumber - 1) * pageSize)
+          .limit(pageSize),
+        Treatment.countDocuments(filter)
+      ]);
 
       res.status(200).json({
         message: "Lấy hồ sơ điều trị theo bác sĩ thành công",
         doctorId,
-        count: treatments.length,
-        data: treatments
+        count: items.length,
+        data: items,
+        pagination: {
+          page: pageNumber,
+          pageSize,
+          totalItems: total,
+          totalPages: Math.ceil(total / pageSize)
+        }
       });
     } catch (err) {
       console.error("Error fetching treatments by doctor:", err);

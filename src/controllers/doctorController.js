@@ -61,19 +61,33 @@ class DoctorController {
   // Lấy danh sách tất cả bác sĩ
   async getAllDoctors(req, res) {
     try {
-  console.log("Fetching all doctors...");
-  // Support filter by specialtyId and name via query
-  const { specialtyId, name } = req.query;
-  const filter = {};
-  if (specialtyId) filter.specialtyId = specialtyId;
-  if (name) filter.name = new RegExp(name, "i");
+      console.log("Fetching all doctors...");
+      // Support filter by specialtyId and name via query + pagination
+      const { specialtyId, name, page = 1, limit = 10 } = req.query;
+      const filter = {};
+      if (specialtyId) filter.specialtyId = specialtyId;
+      if (name) filter.name = new RegExp(name, "i");
 
-  const doctors = await Doctor.find(filter);
+      const pageNumber = Math.max(parseInt(page) || 1, 1);
+      const pageSize = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
+
+      const [items, total] = await Promise.all([
+        Doctor.find(filter)
+          .skip((pageNumber - 1) * pageSize)
+          .limit(pageSize),
+        Doctor.countDocuments(filter)
+      ]);
       
       res.status(200).json({
         message: "Lấy danh sách bác sĩ thành công",
-        count: doctors.length,
-        data: doctors
+        count: items.length,
+        data: items,
+        pagination: {
+          page: pageNumber,
+          pageSize,
+          totalItems: total,
+          totalPages: Math.ceil(total / pageSize)
+        }
       });
     } catch (err) {
       console.error("Error fetching doctors:", err);
@@ -173,7 +187,7 @@ class DoctorController {
   // Tìm kiếm bác sĩ theo tên, email, phone hoặc ngày làm việc
   async searchDoctors(req, res) {
     try {
-      const { query } = req.query;
+  const { query, page = 1, limit = 10 } = req.query;
 
       if (!query) {
         return res.status(400).json({ 
@@ -182,19 +196,35 @@ class DoctorController {
       }
 
       const searchRegex = new RegExp(query, 'i');
-      const doctors = await Doctor.find({
+      const filter = {
         $or: [
           { name: searchRegex },
           { email: searchRegex },
           { phone: searchRegex },
           { "schedule.day": searchRegex }
         ]
-      });
+      };
+
+      const pageNumber = Math.max(parseInt(page) || 1, 1);
+      const pageSize = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
+
+      const [items, total] = await Promise.all([
+        Doctor.find(filter)
+          .skip((pageNumber - 1) * pageSize)
+          .limit(pageSize),
+        Doctor.countDocuments(filter)
+      ]);
 
       res.status(200).json({
         message: "Tìm kiếm bác sĩ thành công",
-        count: doctors.length,
-        data: doctors
+        count: items.length,
+        data: items,
+        pagination: {
+          page: pageNumber,
+          pageSize,
+          totalItems: total,
+          totalPages: Math.ceil(total / pageSize)
+        }
       });
     } catch (err) {
       console.error("Error searching doctors:", err);
