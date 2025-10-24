@@ -2,12 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Medicine = require('../models/medicine');
 const { getPagingParams, applyPagingAndSortingToQuery, buildMeta, buildSearchFilter } = require('../helpers/query');
-
-// Helper to generate next incremental id per collection
-async function getNextId(Model) {
-    const maxDoc = await Model.findOne().sort({ id: -1 }).select('id');
-    return (maxDoc?.id ?? 0) + 1;
-}
+const mongoose = require('mongoose');
 
 // /api/medicines?q=amox
 // /api/medicines?page=2&limit=10&sort=-price&q=acme
@@ -29,9 +24,8 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
-        const nextId = await getNextId(Medicine);
+        // Create without custom id; MongoDB will generate _id
         const medicine = new Medicine({
-            id: nextId,
             name: req.body.name,
             price: req.body.price,
             quantity: req.body.quantity,
@@ -49,7 +43,11 @@ router.post('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     try {
-        const medicine = await Medicine.findOne({ id: req.params.id });
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid _id format' });
+        }
+        const medicine = await Medicine.findById(id).lean();
         if (medicine) {
             res.json(medicine);
         } else {
@@ -62,15 +60,19 @@ router.get('/:id', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
     try {
-        const medicine = await Medicine.findOne({ id: req.params.id });
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid _id format' });
+        }
+        const medicine = await Medicine.findById(id);
         if (medicine) {
-            medicine.name = req.body.name || medicine.name;
-            medicine.price = req.body.price || medicine.price;
-            medicine.quantity = req.body.quantity || medicine.quantity;
-            medicine.dosageForm = req.body.dosageForm || medicine.dosageForm;
-            medicine.manufacturer = req.body.manufacturer || medicine.manufacturer;
-            medicine.unit = req.body.unit || medicine.unit;
-            medicine.expiryDate = req.body.expiryDate || medicine.expiryDate;
+            medicine.name = req.body.name ?? medicine.name;
+            medicine.price = req.body.price ?? medicine.price;
+            medicine.quantity = req.body.quantity ?? medicine.quantity;
+            medicine.dosageForm = req.body.dosageForm ?? medicine.dosageForm;
+            medicine.manufacturer = req.body.manufacturer ?? medicine.manufacturer;
+            medicine.unit = req.body.unit ?? medicine.unit;
+            medicine.expiryDate = req.body.expiryDate ?? medicine.expiryDate;
             const updatedMedicine = await medicine.save();
             res.json(updatedMedicine);
         } else {
@@ -83,7 +85,11 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
-        const medicine = await Medicine.findOneAndDelete({ id: req.params.id });
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid _id format' });
+        }
+        const medicine = await Medicine.findByIdAndDelete(id);
         if (medicine) {
             res.json({ message: 'Medicine deleted' });
         } else {
