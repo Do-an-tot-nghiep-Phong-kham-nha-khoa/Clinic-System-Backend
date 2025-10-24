@@ -23,11 +23,8 @@ const treatmentSchema = new mongoose.Schema({
         required: true
     },
     prescription: [{
-        name: { type: String, required: true },
-        dosage: { type: String, required: true },
-        frequency: { type: String, required: true },
-        duration: { type: String, required: true },
-        instructions: { type: String }
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Prescription'
     }],
     totalCost: { type: Number, required: true },
 }, {
