@@ -1,14 +1,18 @@
 const mongoose = require('mongoose');
 
 const prescriptionSchema = new mongoose.Schema({
-    id: {
-        type: Number,
-        required: true,
-        unique: true
-    },
     createAt: {
         type: Date,
         required: true
+    },
+    totalPrice: {
+        type: Number,
+        required: false
+    },
+    patientId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Patient',
+        required: false
     }
 });
 

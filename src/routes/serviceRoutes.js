@@ -2,27 +2,23 @@ const express = require('express');
 const router = express.Router();
 const Service = require('../models/service');
 const { getPagingParams, applyPagingAndSortingToQuery, buildMeta, buildSearchFilter } = require('../helpers/query');
-
-// Helper to generate next incremental id per collection
-async function getNextId(Model) {
-    const maxDoc = await Model.findOne().sort({ id: -1 }).select('id');
-    return (maxDoc?.id ?? 0) + 1;
-}
+const mongoose = require('mongoose');
 
 // /api/services?page=2&limit=10&sort=-price
 // /api/services?q=teeth&minPrice=20&maxPrice=100
-// /api/services?id=7
 router.get('/', async (req, res) => {
     try {
-        const paging = getPagingParams(req.query, { sortBy: 'id', defaultLimit: 20, maxLimit: 200 });
+        const paging = getPagingParams(req.query, { sortBy: '_id', defaultLimit: 20, maxLimit: 200 });
 
         // Build filter
         const filter = {};
         // Search across name and description via ?q=
         const search = buildSearchFilter(req.query, ['name', 'description']);
         if (search.$or) filter.$or = search.$or;
-        // Exact id match
-        if (req.query.id) filter.id = Number(req.query.id);
+        // Optional filter by _id via query string
+        if (req.query._id && mongoose.Types.ObjectId.isValid(req.query._id)) {
+            filter._id = new mongoose.Types.ObjectId(req.query._id);
+        }
         // Price range
         if (req.query.minPrice || req.query.maxPrice) {
             filter.price = {};
@@ -41,9 +37,8 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
-        const nextId = await getNextId(Service);
+        // Create without custom id; MongoDB will generate _id
         const service = new Service({
-            id: nextId,
             name: req.body.name,
             price: req.body.price,
             description: req.body.description
@@ -57,7 +52,11 @@ router.post('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     try {
-        const service = await Service.findOne({ id: req.params.id });
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid _id format' });
+        }
+        const service = await Service.findById(id).lean();
         if (service) {
             res.json(service);
         } else {
@@ -70,11 +69,15 @@ router.get('/:id', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
     try {
-        const service = await Service.findOne({ id: req.params.id });
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid _id format' });
+        }
+        const service = await Service.findById(id);
         if (service) {
-            service.name = req.body.name || service.name;
-            service.price = req.body.price || service.price;
-            service.description = req.body.description || service.description;
+            service.name = req.body.name ?? service.name;
+            service.price = req.body.price ?? service.price;
+            service.description = req.body.description ?? service.description;
             const updatedService = await service.save();
             res.json(updatedService);
         } else {
@@ -87,7 +90,11 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
-        const service = await Service.findOneAndDelete({ id: req.params.id });
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid _id format' });
+        }
+        const service = await Service.findByIdAndDelete(id);
         if (service) {
             res.json({ message: 'Service deleted' });
         } else {

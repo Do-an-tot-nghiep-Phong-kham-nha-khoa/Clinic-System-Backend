@@ -4,91 +4,78 @@ const Prescription = require('../models/prescription');
 const MedicineInPrescription = require('../models/medicineInPrescription');
 const Medicine = require('../models/medicine');
 const { getPagingParams, buildPipelineStages, buildMeta, buildSearchFilter } = require('../helpers/query');
-
-// Helper to generate next incremental id per collection
-async function getNextId(Model) {
-    const maxDoc = await Model.findOne().sort({ id: -1 }).select('id');
-    return (maxDoc?.id ?? 0) + 1;
-}
+const mongoose = require('mongoose');
 
 // /api/prescriptions?page=2&limit=10&sort=-createAt
 // /api/prescriptions?medicineId=12&q=500mg
 // /api/prescriptions?dateFrom=2025-10-01&dateTo=2025-10-31&q=ACME
 router.get('/', async (req, res) => {
     try {
-        const paging = getPagingParams(req.query, { sortBy: 'id', defaultLimit: 20, maxLimit: 200 });
+        const { query } = req;
+        const paging = getPagingParams(query, { sortBy: '_id', defaultLimit: 20, maxLimit: 200 });
 
-        // Root-level filters before lookups
-        const rootMatch = {};
-        if (req.query.id) rootMatch.id = Number(req.query.id);
-        if (req.query.dateFrom || req.query.dateTo) {
-            rootMatch.createAt = {};
-            if (req.query.dateFrom) rootMatch.createAt.$gte = new Date(req.query.dateFrom);
-            if (req.query.dateTo) rootMatch.createAt.$lte = new Date(req.query.dateTo);
-        }
+        // Build match conditions
+        const match = {
+            ...(query.id && { _id: new mongoose.Types.ObjectId(query.id) }),
+            ...(query.patientId && { patientId: new mongoose.Types.ObjectId(query.patientId) }),
+            ...(query.dateFrom || query.dateTo ? {
+                createAt: {
+                    ...(query.dateFrom && { $gte: new Date(query.dateFrom) }),
+                    ...(query.dateTo && { $lte: new Date(query.dateTo) })
+                }
+            } : {})
+        };
 
-        const pipeline = [];
-        if (Object.keys(rootMatch).length) pipeline.push({ $match: rootMatch });
-
-        // Join items (MedicineInPrescription)
-        pipeline.push(
-            { $lookup: { from: 'medicineinprescriptions', localField: 'id', foreignField: 'prescriptionId', as: 'items' } },
-            { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } }
-        );
-
-        // Optional filter by medicineId
-        if (req.query.medicineId) {
-            pipeline.push({ $match: { 'items.medicineId': Number(req.query.medicineId) } });
-        }
-
-        // Join medicine and support search
-        pipeline.push(
-            { $lookup: { from: 'medicines', localField: 'items.medicineId', foreignField: 'id', as: 'medicine' } },
-            { $unwind: { path: '$medicine', preserveNullAndEmptyArrays: true } },
-            { $addFields: { 'items.medicine': '$medicine', idStr: { $toString: '$id' } } }
-        );
-
-        // Text search across item fields and medicine fields
-        const search = buildSearchFilter(req.query, [
-            'items.dosage', 'items.frequency', 'items.duration', 'items.instruction',
-            'medicine.name', 'medicine.manufacturer', 'idStr'
-        ]);
-        if (Object.keys(search).length) pipeline.push({ $match: search });
-
-        // Group back and project
-        pipeline.push(
+        // Build pipeline
+        const pipeline = [
+            ...(Object.keys(match).length ? [{ $match: match }] : []),
+            // Join medicineInPrescription
+            {
+                $lookup: {
+                    from: 'medicineinprescriptions',
+                    localField: '_id',
+                    foreignField: 'prescriptionId',
+                    as: 'items'
+                }
+            },
+            { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } },
+            ...(query.medicineId ? [{ $match: { 'items.medicineId': new mongoose.Types.ObjectId(query.medicineId) } }] : []),
+            // Join medicine
+            {
+                $lookup: {
+                    from: 'medicines',
+                    localField: 'items.medicineId',
+                    foreignField: '_id',
+                    as: 'items.medicine'
+                }
+            },
+            { $unwind: { path: '$items.medicine', preserveNullAndEmptyArrays: true } },
+            // Search
+            ...(Object.keys(search = buildSearchFilter(query, [
+                'items.dosage', 'items.frequency', 'items.duration', 'items.instruction',
+                'items.medicine.name', 'items.medicine.manufacturer', '_id'
+            ])).length ? [{ $match: search }] : []),
+            // Group and project
             {
                 $group: {
                     _id: '$_id',
-                    id: { $first: '$id' },
+                    id: { $first: '$_id' },
                     createAt: { $first: '$createAt' },
-                    items: { $push: '$items' }
+                    patientId: { $first: '$patientId' },
+                    totalCost: { $first: '$totalCost' },
+                    updatedAt: { $first: '$updatedAt' },
+                    __v: { $first: '$__v' },
+                    items: { $push: { $cond: [{ $ne: ['$items', null] }, '$items', '$$REMOVE'] } }
                 }
             },
-            {
-                $project: {
-                    _id: 0,
-                    id: 1,
-                    createAt: 1,
-                    items: {
-                        $filter: {
-                            input: '$items',
-                            as: 'it',
-                            cond: { $ne: ['$$it', null] }
-                        }
-                    }
-                }
-            }
-        );
+            { $project: { _id: 0, id: 1, createAt: 1, patientId: 1, totalCost: 1, updatedAt: 1, __v: 1, items: 1 } }
+        ];
 
-        // Data and total in parallel
-        const prePagingPipeline = [...pipeline];
-        const dataPipeline = [...prePagingPipeline, ...buildPipelineStages(paging)];
-        const [data, countArr] = await Promise.all([
-            Prescription.aggregate(dataPipeline),
-            Prescription.aggregate([...prePagingPipeline, { $count: 'total' }])
+        // Execute parallel queries
+        const [data, [{ total = 0 } = {}]] = await Promise.all([
+            Prescription.aggregate([...pipeline, ...buildPipelineStages(paging)]),
+            Prescription.aggregate([...pipeline, { $count: 'total' }])
         ]);
-        const total = countArr[0]?.total || 0;
 
         res.json({ data, meta: buildMeta(total, paging.page, paging.limit) });
     } catch (error) {
@@ -96,198 +83,97 @@ router.get('/', async (req, res) => {
     }
 });
 
-router.get('/:id', async (req, res) => {
-    try {
-        const id = Number(req.params.id);
-        const results = await Prescription.aggregate([
-            { $match: { id } },
-            { $lookup: { from: 'medicineinprescriptions', localField: 'id', foreignField: 'prescriptionId', as: 'items' } },
-            { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } },
-            { $lookup: { from: 'medicines', localField: 'items.medicineId', foreignField: 'id', as: 'medicine' } },
-            { $unwind: { path: '$medicine', preserveNullAndEmptyArrays: true } },
-            { $addFields: { 'items.medicine': '$medicine' } },
-            {
-                $group: {
-                    _id: '$_id',
-                    id: { $first: '$id' },
-                    createAt: { $first: '$createAt' },
-                    items: { $push: '$items' }
-                }
-            },
-            {
-                $project: {
-                    _id: 0,
-                    id: 1,
-                    createAt: 1,
-                    items: {
-                        $filter: {
-                            input: '$items',
-                            as: 'it',
-                            cond: { $ne: ['$$it', null] }
-                        }
-                    }
-                }
-            }
-        ]);
-
-        if (!results.length) {
-            return res.status(404).json({ message: 'Prescription not found' });
-        }
-        res.json(results[0]);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
-
 router.post('/', async (req, res) => {
     try {
-        const { createAt, items } = req.body;
-        const createAtValue = createAt ?? new Date().toISOString();
+        const { createAt = new Date().toISOString(), patientId, items } = req.body;
 
+        // Validate items
         if (!Array.isArray(items) || items.length === 0) {
-            return res.status(400).json({ message: 'items (medicines) are required' });
+            return res.status(400).json({ message: 'Items (medicines) are required' });
         }
 
-        // Validate items and gather medicineIds
-        const medicineIds = [];
-        for (const it of items) {
-            if (!it || it.medicineId == null) {
-                return res.status(400).json({ message: 'Each item must include medicineId' });
+        const requiredFields = ['medicineId', 'quantity', 'dosage', 'frequency', 'duration', 'instruction'];
+        for (const item of items) {
+            if (!item || requiredFields.some(field => item[field] == null)) {
+                return res.status(400).json({ message: 'Each item must include medicineId, quantity, dosage, frequency, duration, and instruction' });
             }
-            if (it.quantity == null || it.dosage == null || it.frequency == null || it.duration == null || it.instruction == null) {
-                return res.status(400).json({ message: 'Each item must include quantity, dosage, frequency, duration and instruction' });
+            if (!mongoose.isValidObjectId(item.medicineId)) {
+                return res.status(400).json({ message: `Invalid medicineId: ${item.medicineId}` });
             }
-            medicineIds.push(Number(it.medicineId));
         }
 
-        // Ensure all medicines exist
-        const medicines = await Medicine.find({ id: { $in: medicineIds } }).lean();
-        const medById = new Map(medicines.map(m => [m.id, m]));
-        if (medById.size !== medicineIds.length) {
+        // Validate patientId
+        if (!mongoose.isValidObjectId(patientId)) {
+            return res.status(400).json({ message: `Invalid patientId: ${patientId}` });
+        }
+
+        // Verify medicines exist and get prices
+        const medicineIds = items.map(item => new mongoose.Types.ObjectId(item.medicineId));
+        const medicines = await Medicine.find({ _id: { $in: medicineIds } }).lean();
+        if (medicines.length !== new Set(medicineIds.map(id => id.toString())).size) {
             return res.status(400).json({ message: 'One or more medicines not found' });
         }
 
-        // Generate ids
-        const prescriptionId = await getNextId(Prescription);
-        let nextMIPId = await getNextId(MedicineInPrescription);
+        // Calculate total cost
+        const medicinePriceMap = new Map(medicines.map(m => [m._id.toString(), m.price || 0]));
+        const totalPrice = items.reduce((sum, item) => {
+            const price = medicinePriceMap.get(item.medicineId.toString()) || 0;
+            return sum + (price * Number(item.quantity));
+        }, 0);
 
-        // Prepare MedicineInPrescription docs
-        const mipDocs = items.map(it => ({
-            id: nextMIPId++,
-            quantity: Number(it.quantity),
-            dosage: it.dosage,
-            frequency: it.frequency,
-            duration: it.duration,
-            instruction: it.instruction,
-            medicineId: Number(it.medicineId),
-            prescriptionId: prescriptionId
-        }));
-
-        // Save prescription and its items
-        const prescription = new Prescription({ id: prescriptionId, createAt: createAtValue });
+        // Create prescription
+        const prescription = new Prescription({ createAt, patientId, totalPrice });
         await prescription.save();
+
+        // Create medicineInPrescription documents
+        const mipDocs = items.map(item => ({
+            prescriptionId: prescription._id,
+            medicineId: new mongoose.Types.ObjectId(item.medicineId),
+            quantity: Number(item.quantity),
+            dosage: item.dosage,
+            frequency: item.frequency,
+            duration: item.duration,
+            instruction: item.instruction
+        }));
         await MedicineInPrescription.insertMany(mipDocs);
 
-        // Return enriched created prescription
+        // Fetch enriched prescription
         const [result] = await Prescription.aggregate([
-            { $match: { id: prescriptionId } },
-            { $lookup: { from: 'medicineinprescriptions', localField: 'id', foreignField: 'prescriptionId', as: 'items' } },
+            { $match: { _id: prescription._id } },
+            {
+                $lookup: {
+                    from: 'medicineinprescriptions',
+                    localField: '_id',
+                    foreignField: 'prescriptionId',
+                    as: 'items'
+                }
+            },
             { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } },
-            { $lookup: { from: 'medicines', localField: 'items.medicineId', foreignField: 'id', as: 'medicine' } },
-            { $unwind: { path: '$medicine', preserveNullAndEmptyArrays: true } },
-            { $addFields: { 'items.medicine': '$medicine' } },
-            { $group: { _id: '$_id', id: { $first: '$id' }, createAt: { $first: '$createAt' }, items: { $push: '$items' } } },
-            { $project: { _id: 0, id: 1, createAt: 1, items: { $filter: { input: '$items', as: 'it', cond: { $ne: ['$$it', null] } } } } }
+            {
+                $lookup: {
+                    from: 'medicines',
+                    localField: 'items.medicineId',
+                    foreignField: '_id',
+                    as: 'items.medicine'
+                }
+            },
+            { $unwind: { path: '$items.medicine', preserveNullAndEmptyArrays: true } },
+            {
+                $group: {
+                    _id: '$_id',
+                    id: { $first: '$_id' },
+                    createAt: { $first: '$createAt' },
+                    patientId: { $first: '$patientId' },
+                    totalPrice: { $first: '$totalPrice' },
+                    items: { $push: '$items' }
+                }
+            },
+            { $project: { _id: 0, id: 1, createAt: 1, patientId: 1, totalPrice: 1, items: 1 } }
         ]);
 
         res.status(201).json(result);
     } catch (error) {
         res.status(400).json({ message: error.message });
-    }
-});
-
-router.put('/:id', async (req, res) => {
-    try {
-        const id = Number(req.params.id);
-        const prescription = await Prescription.findOne({ id });
-        if (!prescription) {
-            return res.status(404).json({ message: 'Prescription not found' });
-        }
-
-        const { createAt, items } = req.body;
-        if (createAt !== undefined) {
-            prescription.createAt = createAt;
-        }
-
-        if (Array.isArray(items)) {
-            if (items.length === 0) {
-                return res.status(400).json({ message: 'items cannot be empty when provided' });
-            }
-            const medicineIds = [];
-            for (const it of items) {
-                if (!it || it.medicineId == null) {
-                    return res.status(400).json({ message: 'Each item must include medicineId' });
-                }
-                if (it.quantity == null || it.dosage == null || it.frequency == null || it.duration == null || it.instruction == null) {
-                    return res.status(400).json({ message: 'Each item must include quantity, dosage, frequency, duration and instruction' });
-                }
-                medicineIds.push(Number(it.medicineId));
-            }
-            // Ensure medicines exist
-            const medicines = await Medicine.find({ id: { $in: medicineIds } }).lean();
-            const medById = new Map(medicines.map(m => [m.id, m]));
-            if (medById.size !== medicineIds.length) {
-                return res.status(400).json({ message: 'One or more medicines not found' });
-            }
-
-            // Replace existing items
-            await MedicineInPrescription.deleteMany({ prescriptionId: id });
-
-            let nextMIPId = await getNextId(MedicineInPrescription);
-            const mipDocs = items.map(it => ({
-                id: nextMIPId++,
-                quantity: Number(it.quantity),
-                dosage: it.dosage,
-                frequency: it.frequency,
-                duration: it.duration,
-                instruction: it.instruction,
-                medicineId: Number(it.medicineId),
-                prescriptionId: id
-            }));
-            await MedicineInPrescription.insertMany(mipDocs);
-        }
-
-        await prescription.save();
-
-        // Return enriched prescription like GET /:id
-        const [result] = await Prescription.aggregate([
-            { $match: { id } },
-            { $lookup: { from: 'medicineinprescriptions', localField: 'id', foreignField: 'prescriptionId', as: 'items' } },
-            { $unwind: { path: '$items', preserveNullAndEmptyArrays: true } },
-            { $lookup: { from: 'medicines', localField: 'items.medicineId', foreignField: 'id', as: 'medicine' } },
-            { $unwind: { path: '$medicine', preserveNullAndEmptyArrays: true } },
-            { $addFields: { 'items.medicine': '$medicine' } },
-            { $group: { _id: '$_id', id: { $first: '$id' }, createAt: { $first: '$createAt' }, items: { $push: '$items' } } },
-            { $project: { _id: 0, id: 1, createAt: 1, items: { $filter: { input: '$items', as: 'it', cond: { $ne: ['$$it', null] } } } } }
-        ]);
-
-        res.json(result);
-    } catch (error) {
-        res.status(400).json({ message: error.message });
-    }
-});
-
-router.delete('/:id', async (req, res) => {
-    try {
-        const id = Number(req.params.id);
-        const prescription = await Prescription.findOneAndDelete({ id });
-        if (!prescription) {
-            return res.status(404).json({ message: 'Prescription not found' });
-        }
-        await MedicineInPrescription.deleteMany({ prescriptionId: id });
-        res.json({ message: 'Prescription and related medicines deleted' });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
     }
 });
 

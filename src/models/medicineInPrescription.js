@@ -1,11 +1,6 @@
 const mongoose = require('mongoose');
 
 const medicineInPrescriptionSchema = new mongoose.Schema({
-    id: {
-        type: Number,
-        required: true,
-        unique: true
-    },
     quantity: {
         type: Number,
         required: true
@@ -27,11 +22,13 @@ const medicineInPrescriptionSchema = new mongoose.Schema({
         required: true
     },
     medicineId: {
-        type: Number,
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Medicine',
         required: true
     },
     prescriptionId: {
-        type: Number,
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Prescription',
         required: true
     }
 });
