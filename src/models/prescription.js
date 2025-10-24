@@ -13,7 +13,11 @@ const prescriptionSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Patient',
         required: false
-    }
+    },
+    items: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'MedicineInPrescription'
+    }]
 });
 
 module.exports = mongoose.model('Prescription', prescriptionSchema);
