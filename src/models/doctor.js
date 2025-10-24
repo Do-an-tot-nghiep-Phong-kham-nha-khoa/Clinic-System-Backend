@@ -7,12 +7,6 @@ const doctorSchema = new mongoose.Schema({
   email: String,
   password: String,
   experience: Number,
-  schedule: [
-    {
-      day: String, // "Monday", "Tuesday", ...
-      timeSlots: [String] // ["08:00-09:00", "09:00-10:00", ...]
-    }
-  ]
 });
 
 module.exports = mongoose.model("Doctor", doctorSchema);

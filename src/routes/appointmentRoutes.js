@@ -3,25 +3,12 @@ const appointmentController = require("../controllers/appointmentController");
 
 const router = express.Router();
 
-// Tạo cuộc hẹn mới
-router.post("/create", appointmentController.createAppointment);
-
-// Lấy tất cả cuộc hẹn
-router.get("/get", appointmentController.getAllAppointments);
-
-// Lấy cuộc hẹn theo ID
-router.get("/:id", appointmentController.getAppointmentById);
-
-// Cập nhật cuộc hẹn
-router.put("/:id", appointmentController.updateAppointment);
-
-// Hủy cuộc hẹn
-router.patch("/:id/cancel", appointmentController.cancelAppointment);
-
-// Lấy cuộc hẹn theo bác sĩ
-router.get("/doctor/:doctorId", appointmentController.getAppointmentsByDoctor);
-
-// Lấy cuộc hẹn theo bệnh nhân
-router.get("/patient/:patientId", appointmentController.getAppointmentsByPatient);
-
+// Đặt lịch hẹn
+router.post("/create", controller.create);
+router.put("/:id/assign-doctor", controller.assignDoctor);
+router.get("/:id", controller.getAppointmentById);
+router.get("/booker/:id", controller.getAppointmentsByBooker);
+router.get("/doctor/:id", controller.getAppointmentsByDoctor);
+router.get("/", controller.getAllAppointments);
+router.put("/:id/status", controller.updateStatus);
 module.exports = router;

@@ -1,11 +1,6 @@
 const mongoose = require('mongoose');
 
 const invoiceSchema = new mongoose.Schema({
-    id: {
-        type: Number,
-        required: true,
-        unique: true
-    },
     createAt: {
         type: Date,
         required: true
@@ -17,15 +12,23 @@ const invoiceSchema = new mongoose.Schema({
     status: {
         type: String,
         enum: ['Paid', 'Cancelled', 'Pending', 'Refunded'],
+        default: 'Pending',
+        required: true
+    },
+    patientId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Patient',
         required: true
     },
     prescriptionId: {
-        type: Number,
-        required: true
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Prescription',
+        required: false
     },
     labOrderId: {
-        type: Number,
-        required: true
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'LabOrder',
+        required: false
     }
 });
 

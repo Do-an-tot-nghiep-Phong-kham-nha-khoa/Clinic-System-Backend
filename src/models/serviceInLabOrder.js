@@ -1,29 +1,22 @@
 const mongoose = require('mongoose');
 
 const serviceInLabOrderSchema = new mongoose.Schema({
-    id: {
-        type: Number,
-        required: true,
-        unique: true
-    },
-    price: {
-        type: Number,
-        required: true
-    },
     description: {
         type: String,
-        required: true
+        required: false
     },
     quantity: {
         type: Number,
         required: true
     },
     serviceId: {
-        type: Number,
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Service',
         required: true
     },
     labOrderId: {
-        type: Number,
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'LabOrder',
         required: true
     }
 });
