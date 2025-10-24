@@ -4,25 +4,14 @@ const database = require("../config/database.js");
 
 const app = express();
 
-// ...
-const patientRoutes = require("./routes/patientRoutes");
-const serviceRoutes = require("./routes/serviceRoutes");
-const medicineRoutes = require("./routes/medicineRoutes");
-const labOrderRoutes = require("./routes/labOrderRoutes");
-const prescriptionRoutes = require("./routes/prescriptionRoutes");
-const invoiceRoutes = require("./routes/invoiceRoutes");
-
-app.use("/patients", patientRoutes);
-app.use("/api/services", serviceRoutes);
-app.use("/api/medicines", medicineRoutes);
-app.use("/api/laborders", labOrderRoutes);
-app.use("/api/prescriptions", prescriptionRoutes);
-app.use("/api/invoices", invoiceRoutes);
-
+// Body parsing first
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Connect DB
 database.connect();
 
+// Centralized routes under /api
 const indexRoutes = require('./routes/indexRoutes');
 indexRoutes(app);
 
