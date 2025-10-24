@@ -6,6 +6,7 @@ const labOrderRoutes = require('./labOrderRoutes');
 const prescriptionRoutes = require('./prescriptionRoutes');
 const invoiceRoutes = require('./invoiceRoutes');
 const medicalRecordRoutes = require('./medicalRecordRoutes');
+const doctorRoutes = require('./doctorRoutes');
 const express = require('express');
 const router = express.Router();
 
@@ -18,4 +19,5 @@ module.exports = (app) => {
     app.use('/prescriptions', prescriptionRoutes);
     app.use('/invoices', invoiceRoutes);
     app.use('/medical-records', medicalRecordRoutes);
+    app.use('/doctors', doctorRoutes);
 }
