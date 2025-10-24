@@ -19,10 +19,10 @@ router.put("/:id", treatmentController.updateTreatment);
 router.delete("/:id", treatmentController.deleteTreatment);
 
 // Lấy hồ sơ điều trị theo bệnh nhân
-router.get("/:patientId", treatmentController.getTreatmentsByPatient);
+router.get("/patient/:patientId", treatmentController.getTreatmentsByPatient);
 
 // Lấy hồ sơ điều trị theo bác sĩ
-router.get("/:doctorId", treatmentController.getTreatmentsByDoctor);
+router.get("/doctor/:doctorId", treatmentController.getTreatmentsByDoctor);
 
 // Lấy thống kê điều trị
 router.get("/stats/overview", treatmentController.getTreatmentStats);
