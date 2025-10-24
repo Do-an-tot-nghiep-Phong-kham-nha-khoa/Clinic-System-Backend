@@ -4,14 +4,11 @@ const database = require("../config/database.js");
 
 const app = express();
 
-// Body parsing first
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Connect DB
 database.connect();
 
-// Centralized routes under /api
 const indexRoutes = require('./routes/indexRoutes');
 indexRoutes(app);
 
