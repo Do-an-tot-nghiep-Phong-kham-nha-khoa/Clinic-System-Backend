@@ -4,10 +4,10 @@ const treatmentController = require("../controllers/treatmentController");
 const router = express.Router();
 
 // Tạo hồ sơ điều trị mới
-router.post("/create", treatmentController.createTreatment);
+router.post("/", treatmentController.createTreatment);
 
 // Lấy tất cả hồ sơ điều trị
-router.get("/get", treatmentController.getAllTreatments);
+router.get("/", treatmentController.getAllTreatments);
 
 // Lấy hồ sơ điều trị theo ID
 router.get("/:id", treatmentController.getTreatmentById);
@@ -19,10 +19,10 @@ router.put("/:id", treatmentController.updateTreatment);
 router.delete("/:id", treatmentController.deleteTreatment);
 
 // Lấy hồ sơ điều trị theo bệnh nhân
-router.get("/patient/:patientId", treatmentController.getTreatmentsByPatient);
+router.get("/:patientId", treatmentController.getTreatmentsByPatient);
 
 // Lấy hồ sơ điều trị theo bác sĩ
-router.get("/doctor/:doctorId", treatmentController.getTreatmentsByDoctor);
+router.get("/:doctorId", treatmentController.getTreatmentsByDoctor);
 
 // Lấy thống kê điều trị
 router.get("/stats/overview", treatmentController.getTreatmentStats);
