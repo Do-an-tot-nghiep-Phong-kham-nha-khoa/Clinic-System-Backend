@@ -11,95 +11,96 @@ exports.list = async (req, res) => {
         const { query } = req;
         const paging = getPagingParams(query, { sortBy: '_id', defaultLimit: 20, maxLimit: 200 });
 
+        // Build query conditions
         const conditions = {
-            ...(query.id && mongoose.isValidObjectId(query.id) && { _id: new mongoose.Types.ObjectId(query.id) }),
-            ...(query.status && { status: String(query.status) }),
-            ...(query.prescriptionId && mongoose.isValidObjectId(query.prescriptionId) && { prescriptionId: new mongoose.Types.ObjectId(query.prescriptionId) }),
-            ...(query.labOrderId && mongoose.isValidObjectId(query.labOrderId) && { labOrderId: new mongoose.Types.ObjectId(query.labOrderId) }),
-            ...(query.dateFrom || query.dateTo
-                ? {
-                    createAt: {
-                        ...(query.dateFrom && { $gte: new Date(query.dateFrom) }),
-                        ...(query.dateTo && { $lte: new Date(query.dateTo) }),
-                    },
+            ...(query.id && mongoose.isValidObjectId(query.id) && /^[0-9a-fA-F]{24}$/.test(query.id) && { _id: new mongoose.Types.ObjectId(query.id) }),
+            ...(query.patientId && mongoose.isValidObjectId(query.patientId) && { patientId: new mongoose.Types.ObjectId(query.patientId) }),
+            ...(query.dateFrom || query.dateTo ? {
+                createAt: {
+                    ...(query.dateFrom && { $gte: new Date(query.dateFrom) }),
+                    ...(query.dateTo && { $lte: new Date(query.dateTo) })
                 }
-                : {}),
-            ...(query.minTotalPrice || query.maxTotalPrice
-                ? {
-                    totalPrice: {
-                        ...(query.minTotalPrice && { $gte: Number(query.minTotalPrice) }),
-                        ...(query.maxTotalPrice && { $lte: Number(query.maxTotalPrice) }),
-                    },
-                }
-                : {}),
+            } : {})
         };
 
-        let dataQuery = Invoice.find(conditions)
+        // Build match for MedicineInPrescription
+        const match = query.medicineId && mongoose.isValidObjectId(query.medicineId) ? { medicineId: new mongoose.Types.ObjectId(query.medicineId) } : {};
+
+        // Query with populate
+        let dataQuery = Prescription.find(conditions)
             .populate({
-                path: 'prescriptionId',
-                populate: { path: 'items', populate: { path: 'medicineId', model: 'Medicine', select: 'name description price manufacturer' } },
-            })
-            .populate({
-                path: 'labOrderId',
-                populate: { path: 'items', populate: { path: 'serviceId', model: 'Service', select: 'name description price' } },
+                path: 'items',
+                match,
+                populate: { path: 'medicineId', model: 'Medicine', select: 'name description price manufacturer dosageForm unit expiryDate __v' }
             })
             .lean();
 
-        // Optional simple search (best-effort, pre-populate). Keeps original route behavior.
-        const search = buildSearchFilter(query, [
-            'status',
-            '_id',
-            'prescriptionId.items.medicineId.name',
-            'labOrderId.items.serviceId.name',
-            'labOrderId.items.description',
-        ]);
+        // Build search conditions
+        const searchFields = [
+            'items.dosage',
+            'items.frequency',
+            'items.duration',
+            'items.instruction',
+            'items.medicineId.name',
+            'items.medicineId.manufacturer',
+            '_id'
+        ];
+        const search = buildSearchFilter(query, searchFields);
         if (Object.keys(search).length) {
-            dataQuery = dataQuery.where(search);
+            dataQuery = dataQuery.where({
+                $or: [
+                    { 'items.dosage': { $regex: search.$text || '', $options: 'i' } },
+                    { 'items.frequency': { $regex: search.$text || '', $options: 'i' } },
+                    { 'items.duration': { $regex: search.$text || '', $options: 'i' } },
+                    { 'items.instruction': { $regex: search.$text || '', $options: 'i' } },
+                    { 'items.medicineId.name': { $regex: search.$text || '', $options: 'i' } },
+                    { 'items.medicineId.manufacturer': { $regex: search.$text || '', $options: 'i' } },
+                    { _id: { $regex: search.$text || '', $options: 'i' } }
+                ]
+            });
         }
 
-        dataQuery = dataQuery.sort(paging.sort).skip(paging.skip).limit(paging.limit);
+        // Apply sorting and paging
+        dataQuery = dataQuery
+            .sort(paging.sortBy)
+            .skip((paging.page - 1) * paging.limit)
+            .limit(paging.limit);
 
-        const [data, total] = await Promise.all([dataQuery.exec(), Invoice.countDocuments(conditions)]);
+        // Execute queries in parallel
+        const [data, total] = await Promise.all([
+            dataQuery.exec(),
+            Prescription.countDocuments(conditions)
+        ]);
 
-        const filteredData = data.map((invoice) => ({
-            _id: invoice._id,
-            createAt: invoice.createAt,
-            totalPrice: invoice.totalPrice,
-            status: invoice.status,
-            patientId: invoice.patientId,
-            prescription: invoice.prescriptionId && Array.isArray(invoice.prescriptionId.items)
-                ? {
-                    _id: invoice.prescriptionId._id,
-                    createAt: invoice.prescriptionId.createAt,
-                    totalPrice: invoice.prescriptionId.totalPrice,
-                    items: invoice.prescriptionId.items.map((item) => ({
-                        _id: item._id,
-                        quantity: item.quantity,
-                        dosage: item.dosage,
-                        frequency: item.frequency,
-                        duration: item.duration,
-                        instruction: item.instruction,
-                        medicineId: item.medicineId ? item.medicineId._id : null,
-                        prescriptionId: item.prescriptionId,
-                        medicine: item.medicineId,
-                    })),
-                }
-                : null,
-            labOrder: invoice.labOrderId && Array.isArray(invoice.labOrderId.items)
-                ? {
-                    _id: invoice.labOrderId._id,
-                    testTime: invoice.labOrderId.testTime,
-                    totalPrice: invoice.labOrderId.totalPrice,
-                    items: invoice.labOrderId.items.map((item) => ({
-                        _id: item._id,
-                        quantity: item.quantity,
-                        description: item.description,
-                        serviceId: item.serviceId ? item.serviceId._id : null,
-                        labOrderId: item.labOrderId,
-                        service: item.serviceId,
-                    })),
-                }
-                : null,
+        // Transform response to match desired format
+        const filteredData = data.map(prescription => ({
+            _id: prescription._id,
+            createAt: prescription.createAt,
+            patientId: prescription.patientId || null,
+            totalPrice: Number(prescription.totalPrice) || 0,
+            updatedAt: prescription.updatedAt || null,
+            items: Array.isArray(prescription.items) ? prescription.items.map(item => ({
+                _id: item._id,
+                quantity: item.quantity,
+                dosage: item.dosage,
+                frequency: item.frequency,
+                duration: item.duration,
+                instruction: item.instruction,
+                medicineId: item.medicineId ? item.medicineId._id : null,
+                prescriptionId: item.prescriptionId,
+                __v: item.__v || 0,
+                medicine: item.medicineId ? {
+                    _id: item.medicineId._id,
+                    name: item.medicineId.name,
+                    description: item.medicineId.description,
+                    price: item.medicineId.price,
+                    manufacturer: item.medicineId.manufacturer,
+                    dosageForm: item.medicineId.dosageForm,
+                    unit: item.medicineId.unit,
+                    expiryDate: item.medicineId.expiryDate,
+                    __v: item.medicineId.__v || 0
+                } : null
+            })) : []
         }));
 
         res.json({ data: filteredData, meta: buildMeta(total, paging.page, paging.limit) });
