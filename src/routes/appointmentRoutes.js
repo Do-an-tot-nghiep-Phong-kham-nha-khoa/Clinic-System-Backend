@@ -1,6 +1,7 @@
 const express = require("express");
+const appointmentController = require("../controllers/appointmentController");
+
 const router = express.Router();
-const controller = require("../controllers/appointmentController");
 
 // Đặt lịch hẹn
 router.post("/create", controller.create);
