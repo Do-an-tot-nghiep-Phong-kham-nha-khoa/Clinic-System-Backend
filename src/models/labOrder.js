@@ -10,8 +10,19 @@ const labOrderSchema = new mongoose.Schema({
         required: true
     },
     items: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'ServiceInLabOrder'
+        serviceId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Service',
+            required: true
+        },
+        quantity: {
+            type: Number,
+            required: true
+        },
+        description: {
+            type: String,
+            required: false
+        }
     }]
 });
 
