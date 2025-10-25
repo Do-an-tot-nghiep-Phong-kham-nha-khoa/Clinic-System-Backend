@@ -15,8 +15,31 @@ const prescriptionSchema = new mongoose.Schema({
         required: false
     },
     items: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'MedicineInPrescription'
+        medicineId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Medicine',
+            required: true
+        },
+        quantity: {
+            type: Number,
+            required: true
+        },
+        dosage: {
+            type: String,
+            required: false
+        },
+        frequency: {
+            type: String,
+            required: false
+        },
+        duration: {
+            type: String,
+            required: false
+        },
+        instruction: {
+            type: String,
+            required: false
+        }
     }]
 });
 
