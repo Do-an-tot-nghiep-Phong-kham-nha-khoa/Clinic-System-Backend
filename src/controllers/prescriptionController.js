@@ -102,16 +102,23 @@ exports.list = async (req, res) => {
 
 // POST /api/prescriptions
 exports.create = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
         const { createAt = new Date().toISOString(), patientId, items } = req.body;
 
         // Validation: Check if items array is valid
         if (!Array.isArray(items) || items.length === 0) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ message: 'Items (medicines) are required' });
         }
 
         // Validate patientId
         if (!mongoose.isValidObjectId(patientId)) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ message: `Invalid patientId: ${patientId}` });
         }
 
@@ -119,24 +126,52 @@ exports.create = async (req, res) => {
         const requiredFields = ['medicineId', 'quantity', 'dosage', 'frequency', 'duration', 'instruction'];
         for (const item of items) {
             if (!item || requiredFields.some((k) => item[k] == null)) {
+                await session.abortTransaction();
+                session.endSession();
                 return res.status(400).json({ message: 'Each item must include medicineId, quantity, dosage, frequency, duration, and instruction' });
             }
             if (!mongoose.isValidObjectId(item.medicineId)) {
+                await session.abortTransaction();
+                session.endSession();
                 return res.status(400).json({ message: `Invalid medicineId: ${item.medicineId}` });
+            }
+            if (item.quantity <= 0) {
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(400).json({ message: `Quantity for medicine ${item.medicineId} must be greater than 0` });
             }
         }
 
-        // Verify medicines and calculate totalPrice
+        // Verify medicines and check stock quantity
         const medicineIds = items.map((item) => new mongoose.Types.ObjectId(item.medicineId));
-        const medicines = await Medicine.find({ _id: { $in: medicineIds } }).lean();
+        const medicines = await Medicine.find({ _id: { $in: medicineIds } }).session(session);
         if (medicines.length !== new Set(medicineIds.map((id) => id.toString())).size) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(400).json({ message: 'One or more medicines not found' });
         }
+
+        // Check stock availability
+        const medicineMap = new Map(medicines.map((m) => [m._id.toString(), m]));
+        for (const item of items) {
+            const medicine = medicineMap.get(item.medicineId.toString());
+            if (!medicine || medicine.quantity < Number(item.quantity)) {
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(400).json({
+                    message: `Insufficient stock for medicine ${medicine?.name || item.medicineId}. Available: ${medicine?.quantity || 0}, Requested: ${item.quantity}`
+                });
+            }
+        }
+
+        // Calculate totalPrice with rounding to avoid floating-point issues
         const medicinePriceMap = new Map(medicines.map((m) => [m._id.toString(), m.price || 0]));
-        const totalPrice = items.reduce((sum, item) => {
-            const price = medicinePriceMap.get(item.medicineId.toString()) || 0;
-            return sum + price * Number(item.quantity);
-        }, 0);
+        const totalPrice = Number.parseFloat(
+            items.reduce((sum, item) => {
+                const price = medicinePriceMap.get(item.medicineId.toString()) || 0;
+                return sum + price * Number(item.quantity);
+            }, 0).toFixed(2)
+        );
 
         // Prepare items for embedding
         const formattedItems = items.map((item) => ({
@@ -155,7 +190,22 @@ exports.create = async (req, res) => {
             totalPrice,
             items: formattedItems
         });
-        await prescription.save();
+        await prescription.save({ session });
+
+        // Deduct stock quantities
+        for (const item of items) {
+            const medicineId = item.medicineId.toString();
+            const medicine = medicineMap.get(medicineId);
+            await Medicine.updateOne(
+                { _id: medicine._id, quantity: { $gte: Number(item.quantity) } },
+                { $inc: { quantity: -Number(item.quantity) } },
+                { session }
+            );
+        }
+
+        // Commit the transaction
+        await session.commitTransaction();
+        session.endSession();
 
         // Populate the embedded items' medicineId
         const result = await Prescription.findById(prescription._id)
@@ -191,6 +241,8 @@ exports.create = async (req, res) => {
 
         res.status(201).json(formattedResult);
     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         console.error('Error in prescription create:', error);
         res.status(400).json({ message: error.message });
     }
