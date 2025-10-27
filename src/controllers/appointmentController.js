@@ -191,108 +191,135 @@ module.exports.assignDoctor = async (req, res) => {
     );
 
     if (slotIndex === -1) {
-        return res.status(400).json({ message: 'Invalid time slot for this doctor' });
-      }
-      // check if slot already booked
-      if (schedule.timeSlots[slotIndex].isBooked) {
-        return res.status(400).json({ message: 'This time slot is already booked' });
-      }
+      return res.status(400).json({ message: 'Invalid time slot for this doctor' });
+    }
 
-      // mark appointment as assigned and update schedule
-      appointment.doctor_id = doctor._id;
-      appointment.status = 'assigned';
-      await appointment.save();
+    if (schedule.timeSlots[slotIndex].isBooked) {
+      return res.status(400).json({ message: 'This time slot is already booked by another patient' });
+    }
 
-      // Update schedule slot as booked
-      schedule.timeSlots[slotIndex].isBooked = true;
-      schedule.timeSlots[slotIndex].appointment_id = appointment._id;
-      await Schedule.updateOne(
-        { _id: schedule._id, "timeSlots.startTime": appointment.timeSlot },
-        {
-          $set: {
-            "timeSlots.$.isBooked": true,
-            "timeSlots.$.appointment_id": appointment._id
-          }
-        }
-      );
+    // ==== 6. Cập nhật dữ liệu ====
+    appointment.doctor_id = doctor._id;
+    appointment.status = 'pending';
+    await appointment.save();
 
-      return res.status(200).json({ message: 'Doctor assigned to appointment', appointment });
-  }catch (error) {
-    console.error('Error assigning doctor to appointment:', error);
+    schedule.timeSlots[slotIndex].isBooked = true;
+    schedule.timeSlots[slotIndex].appointment_id = appointment._id;
+    await schedule.save();
+
+    return res.status(200).json({
+      message: 'Doctor assigned successfully to appointment',
+      appointment,
+    });
+  } catch (error) {
+    console.error('Error assigning doctor:', error);
     return res.status(500).json({ message: 'Internal server error' });
   }
-}
+};
 
-  // [GET] /appointments/:id
-  module.exports.getAppointmentById = async (req, res) => {
-    try {
-      const { id } = req.params;
-      const appt = await Appointment.findById(id)
-        .populate('doctor_id', 'name specialtyId')
-        .populate('profile', 'name phone email');
-      if (!appt) return res.status(404).json({ message: 'Appointment not found' });
-      return res.status(200).json({ appointment: appt });
-    } catch (err) {
-      console.error('Error getting appointment by id:', err);
-      return res.status(500).json({ message: 'Internal server error' });
-    }
-  };
 
-  // [GET] /appointments/booker/:id
-  module.exports.getAppointmentsByBooker = async (req, res) => {
-    try {
-      const { id } = req.params;
-      const appts = await Appointment.find({ booker_id: id }).sort({ appointmentDate: -1 });
-      return res.status(200).json({ count: appts.length, data: appts });
-    } catch (err) {
-      console.error('Error fetching appointments by booker:', err);
-      return res.status(500).json({ message: 'Internal server error' });
-    }
-  };
+// [PUT] /appointments/:id/status
+module.exports.updateStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
 
-  // [GET] /appointments/doctor/:id
-  module.exports.getAppointmentsByDoctor = async (req, res) => {
-    try {
-      const { id } = req.params;
-      const appts = await Appointment.find({ doctor_id: id }).sort({ appointmentDate: -1 });
-      return res.status(200).json({ count: appts.length, data: appts });
-    } catch (err) {
-      console.error('Error fetching appointments by doctor:', err);
-      return res.status(500).json({ message: 'Internal server error' });
-    }
-  };
+    const validStatuses = ['pending', 'confirmed', 'cancelled', 'completed'];
+    if (!validStatuses.includes(status))
+      return res.status(400).json({ message: 'Invalid status value' });
 
-  // [GET] /appointments/
-  module.exports.getAllAppointments = async (req, res) => {
-    try {
-      const { page = 1, limit = 20 } = req.query;
-      const pageNumber = Math.max(parseInt(page) || 1, 1);
-      const pageSize = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
-      const [items, total] = await Promise.all([
-        Appointment.find({})
-          .sort({ appointmentDate: -1 })
-          .skip((pageNumber - 1) * pageSize)
-          .limit(pageSize),
-        Appointment.countDocuments({})
-      ]);
-      return res.status(200).json({ count: items.length, data: items, pagination: { page: pageNumber, pageSize, totalItems: total, totalPages: Math.ceil(total / pageSize) } });
-    } catch (err) {
-      console.error('Error fetching all appointments:', err);
-      return res.status(500).json({ message: 'Internal server error' });
-    }
-  };
+    const appointment = await Appointment.findByIdAndUpdate(id, { status }, { new: true });
+    if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
 
-  // [PUT] /appointments/:id/status
-  module.exports.updateStatus = async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { status } = req.body;
-      if (!status) return res.status(400).json({ message: 'status is required' });
-      const updated = await Appointment.findByIdAndUpdate(id, { status }, { new: true });
-      if (!updated) return res.status(404).json({ message: 'Appointment not found' });
-      return res.status(200).json({ message: 'Status updated', appointment: updated });
-    } catch (err) {
-      console.error('Error updating appointment status:', err);
-      return res.status(500).json({ message: 'Internal server error' });
-    }
-  };
+    res.status(200).json({ message: 'Appointment status updated', appointment });
+  } catch (error) {
+    console.error('Error updating status:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// [GET] /appointments
+module.exports.getAllAppointments = async (req, res) => {
+  try {
+    const { doctor_id, booker_id, status, date, specialty_id } = req.query;
+
+    const filter = {};
+    if (doctor_id) filter.doctor_id = doctor_id;
+    if (booker_id) filter.booker_id = booker_id;
+    if (specialty_id) filter.specialty_id = specialty_id;
+    if (status) filter.status = status;
+    if (date) filter.appointmentDate = new Date(date);
+
+    const appointments = await Appointment.find(filter)
+      .populate('doctor_id specialty_id booker_id')
+      .sort({ appointmentDate: 1 });
+
+    res.status(200).json({ count: appointments.length, appointments });
+  } catch (error) {
+    console.error('Error fetching appointments:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// [GET] /appointments/doctor/:id
+module.exports.getAppointmentsByDoctor = async (req, res) => {
+  try {
+    const { id } = req.params; // doctor_id
+    const { date, status } = req.query;
+
+    const filter = { doctor_id: id };
+    if (date) filter.appointmentDate = new Date(date);
+    if (status) filter.status = status;
+
+    const appointments = await Appointment.find(filter)
+      .populate('doctor_id specialty_id booker_id')
+      .sort({ appointmentDate: 1 });
+
+    if (!appointments.length)
+      return res.status(404).json({ message: 'No appointments found for this doctor' });
+
+    res.status(200).json({ count: appointments.length, appointments });
+  } catch (error) {
+    console.error('Error fetching doctor appointments:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// [GET] /appointments/booker/:id
+module.exports.getAppointmentsByBooker = async (req, res) => {
+  try {
+    const { id } = req.params; // booker_id
+    const { status } = req.query;
+
+    const filter = { booker_id: id };
+    if (status) filter.status = status;
+
+    const appointments = await Appointment.find(filter)
+      .populate('doctor_id specialty_id booker_id')
+      .sort({ appointmentDate: -1 });
+
+    if (!appointments.length)
+      return res.status(404).json({ message: 'No appointments found for this patient' });
+
+    res.status(200).json({ count: appointments.length, appointments });
+  } catch (error) {
+    console.error('Error fetching patient appointments:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// [GET] /appointments/:id
+module.exports.getAppointmentById = async (req, res) => {
+  try {
+    const appointment = await Appointment.findById(req.params.id)
+      .populate('doctor_id specialty_id booker_id');
+
+    if (!appointment)
+      return res.status(404).json({ message: 'Appointment not found' });
+
+    res.status(200).json(appointment);
+  } catch (error) {
+    console.error('Error fetching appointment:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};

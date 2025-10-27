@@ -4,7 +4,7 @@ const controller = require("../controllers/appointmentController");
 const router = express.Router();
 
 // Đặt lịch hẹn
-router.post("/create", controller.create);
+router.post("/", controller.create);
 router.put("/:id/assign-doctor", controller.assignDoctor);
 router.get("/:id", controller.getAppointmentById);
 router.get("/booker/:id", controller.getAppointmentsByBooker);

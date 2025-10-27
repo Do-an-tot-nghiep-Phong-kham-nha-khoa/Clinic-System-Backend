@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const LabOrder = require('../models/labOrder');
-const ServiceInLabOrder = require('../models/serviceInLabOrder');
 const Service = require('../models/service');
 const { getPagingParams, buildMeta } = require('../helpers/query');
 
@@ -31,17 +30,17 @@ exports.list = async (req, res) => {
                 : {}),
         };
 
-        // Match for ServiceInLabOrder
+        // Match for items.serviceId
         const itemMatch = query.serviceId && mongoose.isValidObjectId(query.serviceId)
-            ? { serviceId: new mongoose.Types.ObjectId(query.serviceId) }
+            ? { 'items.serviceId': new mongoose.Types.ObjectId(query.serviceId) }
             : {};
 
         // Base query with populate
-        let dataQuery = LabOrder.find(conditions)
+        let dataQuery = LabOrder.find({ ...conditions, ...itemMatch })
             .populate({
-                path: 'items',
-                match: itemMatch,
-                populate: { path: 'serviceId', model: 'Service', select: 'name description price' },
+                path: 'items.serviceId',
+                model: 'Service',
+                select: 'name description price',
             })
             .lean();
 
@@ -84,17 +83,15 @@ exports.create = async (req, res) => {
         if (!Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ message: 'Items (services) are required' });
         }
-
-        const required = ['serviceId', 'quantity', 'description'];
+        const required = ['serviceId', 'quantity'];
         for (const item of items) {
             if (!item || required.some((k) => item[k] == null)) {
-                return res.status(400).json({ message: 'Each item must include serviceId, quantity, and description' });
+                return res.status(400).json({ message: 'Each item must include serviceId and quantity' });
             }
             if (!mongoose.isValidObjectId(item.serviceId)) {
                 return res.status(400).json({ message: `Invalid serviceId: ${item.serviceId}` });
             }
         }
-
         // Verify services and map prices
         const serviceIds = items.map((i) => new mongoose.Types.ObjectId(i.serviceId));
         const services = await Service.find({ _id: { $in: serviceIds } }).lean();
@@ -103,30 +100,24 @@ exports.create = async (req, res) => {
             return res.status(400).json({ message: 'One or more services not found' });
         }
         const priceMap = new Map(services.map((s) => [s._id.toString(), s.price || 0]));
-
         const totalPrice = items.reduce((sum, it) => sum + (priceMap.get(String(it.serviceId)) || 0) * Number(it.quantity), 0);
-
-        const labOrder = new LabOrder({ testTime, totalPrice, items: [] });
-        await labOrder.save();
-
-        const silDocs = items.map((it) => ({
-            labOrderId: labOrder._id,
+        // Prepare items for embedding
+        const formattedItems = items.map((it) => ({
             serviceId: new mongoose.Types.ObjectId(it.serviceId),
             quantity: Number(it.quantity),
-            description: it.description,
+            description: it.description || undefined // Include description only if provided
         }));
-        const createdItems = await ServiceInLabOrder.insertMany(silDocs);
-        const itemIds = createdItems.map((d) => d._id);
-        await LabOrder.updateOne({ _id: labOrder._id }, { $set: { items: itemIds } });
-
+        // Create and save the LabOrder with embedded items
+        const labOrder = new LabOrder({ testTime, totalPrice, items: formattedItems });
+        await labOrder.save();
+        // Populate the embedded items' serviceId
         const result = await LabOrder.findById(labOrder._id)
-            .populate({ path: 'items', populate: { path: 'serviceId', model: 'Service', select: 'name description price' } })
+            .populate('items.serviceId', 'name description price')
             .lean();
-
         if (!result || !Array.isArray(result.items)) {
             return res.status(500).json({ message: 'Failed to populate items' });
         }
-
+        // Format the response
         const response = {
             _id: result._id,
             testTime: result.testTime,
@@ -134,11 +125,9 @@ exports.create = async (req, res) => {
             createdAt: result.createdAt,
             updatedAt: result.updatedAt,
             items: result.items.filter(Boolean).map((item) => ({
-                _id: item._id,
                 quantity: item.quantity,
                 description: item.description,
                 serviceId: item.serviceId?._id,
-                labOrderId: item.labOrderId,
                 service: item.serviceId && {
                     _id: item.serviceId._id,
                     name: item.serviceId.name,
@@ -147,7 +136,6 @@ exports.create = async (req, res) => {
                 },
             })),
         };
-
         res.status(201).json(response);
     } catch (error) {
         res.status(400).json({ message: error.message });
