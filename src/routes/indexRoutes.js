@@ -9,6 +9,7 @@ const medicalRecordRoutes = require('./medicalRecordRoutes');
 const doctorRoutes = require('./doctorRoutes');
 const accountRoutes = require('./accountRoutes');
 const healthProfileRoutes = require('./healthProfileRoutes');
+const userMiddleware = require('../middlewares/user_middleware');
 
 module.exports = (app) => {
     app.use('/patients', patientsRoutes);

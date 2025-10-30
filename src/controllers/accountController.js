@@ -5,6 +5,7 @@ const ForgotPassword = require('../models/forgotPassword');
 const generateHelper = require('../helpers/generate');
 const sendMailHelper = require('../helpers/sendMail');
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
 // [POST] /accounts/register
 module.exports.register = async (req, res) => {
@@ -24,7 +25,7 @@ module.exports.register = async (req, res) => {
     }
 
     // Tạo account
-    const hashedPassword = bcrypt.hashSync(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
     const newAccount = new Account({
       email,
       password: hashedPassword,
@@ -41,12 +42,23 @@ module.exports.register = async (req, res) => {
       gender,
       address
     });
-    await newPatient.save();
+    try {
+      await newPatient.save();
+    } catch (err) {
+      await Account.deleteOne({ _id: newAccount._id });
+      throw err;
+    }
 
     // Gắn cookie để tự động login sau đăng ký
-    res.cookie("tokenUser", newAccount.tokenUser);
+    const tokenUser = generateHelper.generateJWTToken(newAccount);
+    res.cookie("tokenUser", tokenUser, {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax'
+    });
     return res.status(201).json({ message: "Đăng ký thành công!", accountId: newAccount._id });
   } catch (error) {
+    console.error("Register error:", error);
     return res.status(500).json({ message: "Lỗi khi đăng ký tài khoản!" });
   }
 };
@@ -62,7 +74,7 @@ module.exports.login = async (req, res) => {
       return res.status(400).json({ message: "Email không tồn tại!" });
     }
 
-    const isPasswordValid = bcrypt.compareSync(password, account.password);
+    const isPasswordValid = await bcrypt.compare(password, account.password);
     if (!isPasswordValid) {
       return res.status(400).json({ message: "Sai mật khẩu!" });
     }
@@ -71,11 +83,19 @@ module.exports.login = async (req, res) => {
       return res.status(400).json({ message: "Tài khoản đang bị khóa!" });
     }
 
-    res.cookie("tokenUser", account.tokenUser);
+    const tokenUser = generateHelper.generateJWTToken(account);
+    res.cookie("tokenUser", tokenUser, {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
+    });
     return res.status(200).json({
       message: "Đăng nhập thành công!",
-      role: account.roleId.name,
-      tokenUser: account.tokenUser
+      user: {
+        id: account._id,
+        email: account.email,
+        role: account.roleId.name
+      }
     });
   } catch (error) {
     return res.status(500).json({ message: "Lỗi khi đăng nhập!" });
@@ -101,7 +121,9 @@ module.exports.forgotPasswordPost = async (req, res) => {
       return res.status(400).json({ message: "Email không tồn tại!" });
     }
 
-    const otp = generateHelper.generateRandomNumber(8);
+    const otp = generateHelper.generateRandomNumber(6);
+    await ForgotPassword.deleteMany({ email });
+
     const forgotPassword = new ForgotPassword({ email, otp });
     await forgotPassword.save();
 
@@ -137,7 +159,12 @@ module.exports.otpPasswordPost = async (req, res) => {
       return res.status(400).json({ message: "Tài khoản không hợp lệ!" });
     }
 
-    res.cookie("tokenUser", account.tokenUser);
+    const tokenUser = generateHelper.generateJWTToken(account, { purpose: 'resetPassword' });
+    res.cookie("tokenUser", tokenUser, {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax'
+    });
     return res.status(200).json({ message: "Xác thực OTP thành công!" });
   } catch (error) {
     return res.status(500).json({ message: "Lỗi xác thực OTP!" });
@@ -148,15 +175,35 @@ module.exports.otpPasswordPost = async (req, res) => {
 module.exports.resetPasswordPost = async (req, res) => {
   try {
     const { password } = req.body;
-    const tokenUser = req.cookies.tokenUser;
-    if (!tokenUser) {
-      return res.status(401).json({ message: "Thiếu token xác thực!" });
+    const token = req.cookies.tokenUser;
+    if (!token) return res.status(401).json({ message: "Thiếu token xác thực!" });
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      if (err.name === "TokenExpiredError") {
+        return res.status(401).json({ message: "Token đã hết hạn!" });
+      }
+      return res.status(401).json({ message: "Token không hợp lệ!" });
     }
 
-    const hashed = bcrypt.hashSync(password, 10);
-    await Account.updateOne({ tokenUser }, { password: hashed });
+    // Nếu token dành cho reset password, kiểm tra mục đích
+    if (decoded.purpose && decoded.purpose !== "resetPassword") {
+      return res.status(400).json({ message: "Token không hợp lệ cho hành động này!" });
+    }
 
-    return res.status(200).json({ message: "Đặt lại mật khẩu thành công!" });
+    if (!password || password.length < 8) {
+      return res.status(400).json({ message: "Mật khẩu phải ít nhất 8 ký tự!" });
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+    await Account.updateOne({ _id: decoded.id }, { password: hashed });
+
+    // Xoá cookie để buộc login lại
+    res.clearCookie("tokenUser");
+
+    return res.status(200).json({ message: "Đặt lại mật khẩu thành công! Vui lòng đăng nhập lại." });
   } catch (error) {
     return res.status(500).json({ message: "Không thể đặt lại mật khẩu!" });
   }
