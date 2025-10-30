@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
 
 const invoiceSchema = new mongoose.Schema({
-    createAt: {
+    created_at: {
         type: Date,
-        required: true
+        default: Date.now
     },
     totalPrice: {
         type: Number,

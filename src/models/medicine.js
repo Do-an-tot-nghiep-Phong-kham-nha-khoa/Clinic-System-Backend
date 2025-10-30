@@ -28,7 +28,11 @@ const medicineSchema = new mongoose.Schema({
     expiryDate: {
         type: Date,
         required: true
-    }
+    },
+    created_at: {
+        type: Date,
+        default: Date.now
+    },
 });
 
 module.exports = mongoose.model('Medicine', medicineSchema);

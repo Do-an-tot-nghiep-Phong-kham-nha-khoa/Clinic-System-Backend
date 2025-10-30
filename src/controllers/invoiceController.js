@@ -9,10 +9,12 @@ const { getPagingParams, buildMeta, buildSearchFilter } = require('../helpers/qu
 exports.list = async (req, res) => {
     try {
         const { query } = req;
-        const paging = getPagingParams(query, { sortBy: '_id', defaultLimit: 20, maxLimit: 200 });
+        // Sử dụng getPagingParams
+        const paging = getPagingParams(query, { sortBy: 'createAt', sortOrder: 'desc', defaultLimit: 20, maxLimit: 200 });
 
-        // Build query conditions
+        // Build query conditions cho Invoice
         const conditions = {
+            // Tìm kiếm theo _id, patientId, createAt
             ...(query.id && mongoose.isValidObjectId(query.id) && /^[0-9a-fA-F]{24}$/.test(query.id) && { _id: new mongoose.Types.ObjectId(query.id) }),
             ...(query.patientId && mongoose.isValidObjectId(query.patientId) && { patientId: new mongoose.Types.ObjectId(query.patientId) }),
             ...(query.dateFrom || query.dateTo ? {
@@ -20,91 +22,109 @@ exports.list = async (req, res) => {
                     ...(query.dateFrom && { $gte: new Date(query.dateFrom) }),
                     ...(query.dateTo && { $lte: new Date(query.dateTo) })
                 }
-            } : {})
+            } : {}),
+            // Thêm điều kiện tìm kiếm theo status nếu cần
+            ...(query.status && { status: query.status })
         };
 
-        // Build match for MedicineInPrescription
-        const match = query.medicineId && mongoose.isValidObjectId(query.medicineId) ? { medicineId: new mongoose.Types.ObjectId(query.medicineId) } : {};
-
-        // Query with populate
-        let dataQuery = Prescription.find(conditions)
+        // 1. Tạo Query với Populate
+        let dataQuery = Invoice.find(conditions)
+            // 2. **Populate các trường liên quan**
             .populate({
-                path: 'items',
-                match,
-                populate: { path: 'medicineId', model: 'Medicine', select: 'name description price manufacturer dosageForm unit expiryDate __v' }
+                path: 'prescriptionId',
+                select: 'createAt totalPrice items patientId',
+                populate: {
+                    path: 'items',
+                    select: 'quantity dosage frequency duration instruction medicineId',
+                    populate: {
+                        path: 'medicineId',
+                        model: 'Medicine',
+                        select: 'name description price manufacturer dosageForm unit expiryDate __v'
+                    }
+                }
             })
-            .lean();
+            .populate({
+                path: 'labOrderId',
+                select: 'testTime totalPrice items patientId',
+                populate: {
+                    path: 'items',
+                    select: 'quantity description serviceId',
+                    populate: {
+                        path: 'serviceId',
+                        model: 'Service',
+                        select: 'name description price'
+                    }
+                }
+            })
+            .lean(); // Luôn sử dụng .lean() để tăng hiệu suất
 
-        // Build search conditions
-        const searchFields = [
-            'items.dosage',
-            'items.frequency',
-            'items.duration',
-            'items.instruction',
-            'items.medicineId.name',
-            'items.medicineId.manufacturer',
-            '_id'
-        ];
+        const searchFields = ['_id', 'status']; // Có thể thêm các trường khác của Invoice
         const search = buildSearchFilter(query, searchFields);
-        if (Object.keys(search).length) {
-            dataQuery = dataQuery.where({
-                $or: [
-                    { 'items.dosage': { $regex: search.$text || '', $options: 'i' } },
-                    { 'items.frequency': { $regex: search.$text || '', $options: 'i' } },
-                    { 'items.duration': { $regex: search.$text || '', $options: 'i' } },
-                    { 'items.instruction': { $regex: search.$text || '', $options: 'i' } },
-                    { 'items.medicineId.name': { $regex: search.$text || '', $options: 'i' } },
-                    { 'items.medicineId.manufacturer': { $regex: search.$text || '', $options: 'i' } },
-                    { _id: { $regex: search.$text || '', $options: 'i' } }
-                ]
-            });
+
+        if (Object.keys(search).length && search.$or) {
+            // Áp dụng điều kiện tìm kiếm trực tiếp cho Invoice
+            dataQuery = dataQuery.where(search);
         }
 
-        // Apply sorting and paging
+        // 3. **Áp dụng Sorting và Paging** 
         dataQuery = dataQuery
-            .sort(paging.sortBy)
-            .skip((paging.page - 1) * paging.limit)
+            // Sử dụng paging.sort 
+            .sort(paging.sort)
+            .skip(paging.skip)
             .limit(paging.limit);
 
-        // Execute queries in parallel
+        // 4. Execute queries in parallel
         const [data, total] = await Promise.all([
             dataQuery.exec(),
-            Prescription.countDocuments(conditions)
+            // Count tổng số bản ghi khớp điều kiện
+            Invoice.countDocuments(conditions)
         ]);
 
-        // Transform response to match desired format
-        const filteredData = data.map(prescription => ({
-            _id: prescription._id,
-            createAt: prescription.createAt,
-            patientId: prescription.patientId || null,
-            totalPrice: Number(prescription.totalPrice) || 0,
-            updatedAt: prescription.updatedAt || null,
-            items: Array.isArray(prescription.items) ? prescription.items.map(item => ({
-                _id: item._id,
-                quantity: item.quantity,
-                dosage: item.dosage,
-                frequency: item.frequency,
-                duration: item.duration,
-                instruction: item.instruction,
-                medicineId: item.medicineId ? item.medicineId._id : null,
-                prescriptionId: item.prescriptionId,
-                __v: item.__v || 0,
-                medicine: item.medicineId ? {
-                    _id: item.medicineId._id,
-                    name: item.medicineId.name,
-                    description: item.medicineId.description,
-                    price: item.medicineId.price,
-                    manufacturer: item.medicineId.manufacturer,
-                    dosageForm: item.medicineId.dosageForm,
-                    unit: item.medicineId.unit,
-                    expiryDate: item.medicineId.expiryDate,
-                    __v: item.medicineId.__v || 0
-                } : null
-            })) : []
+        // 5. Transform response to match desired format
+        const transformedData = data.map(invoice => ({
+            _id: invoice._id,
+            createAt: invoice.createAt,
+            totalPrice: Number(invoice.totalPrice) || 0,
+            status: invoice.status,
+            patientId: invoice.patientId,
+
+            // Format Prescription data
+            prescription: invoice.prescriptionId ? {
+                _id: invoice.prescriptionId._id,
+                createAt: invoice.prescriptionId.createAt,
+                totalPrice: Number(invoice.prescriptionId.totalPrice) || 0,
+                patientId: invoice.prescriptionId.patientId,
+                items: Array.isArray(invoice.prescriptionId.items) ? invoice.prescriptionId.items.map(item => ({
+                    _id: item._id,
+                    quantity: item.quantity,
+                    dosage: item.dosage,
+                    frequency: item.frequency,
+                    duration: item.duration,
+                    instruction: item.instruction,
+                    medicineId: item.medicineId ? item.medicineId._id : null,
+                    medicine: item.medicineId,
+                })) : []
+            } : null,
+
+            // Format LabOrder data
+            labOrder: invoice.labOrderId ? {
+                _id: invoice.labOrderId._id,
+                testTime: invoice.labOrderId.testTime,
+                totalPrice: Number(invoice.labOrderId.totalPrice) || 0,
+                patientId: invoice.labOrderId.patientId,
+                items: Array.isArray(invoice.labOrderId.items) ? invoice.labOrderId.items.map(item => ({
+                    _id: item._id,
+                    quantity: item.quantity,
+                    description: item.description,
+                    serviceId: item.serviceId ? item.serviceId._id : null,
+                    service: item.serviceId,
+                })) : []
+            } : null,
         }));
 
-        res.json({ data: filteredData, meta: buildMeta(total, paging.page, paging.limit) });
+        res.json({ data: transformedData, meta: buildMeta(total, paging.page, paging.limit) });
     } catch (error) {
+        console.error("Error fetching invoices:", error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -173,9 +193,13 @@ exports.get = async (req, res) => {
 
 // POST /api/invoices
 exports.create = async (req, res) => {
+    // Để việc so sánh dễ dàng, ta sẽ chuẩn hóa patientId từ payload
+    const patientIdFromReq = req.body.patientId ? String(req.body.patientId) : null;
+
     try {
         const { createAt = new Date().toISOString(), status = 'Pending', patientId, prescriptionId, labOrderId } = req.body;
 
+        // 1. Kiểm tra tính hợp lệ ban đầu
         if (!patientId || !mongoose.isValidObjectId(patientId)) {
             return res.status(400).json({ message: 'Valid patientId is required' });
         }
@@ -192,27 +216,49 @@ exports.create = async (req, res) => {
         let prescriptionTotalPrice = 0;
         let labOrderTotalPrice = 0;
 
+        // 2. Kiểm tra Prescription và Patient ID
         if (prescriptionId) {
-            const prescription = await Prescription.findById(prescriptionId).lean();
+            // Lấy cả totalPrice và patientId từ Prescription
+            const prescription = await Prescription.findById(prescriptionId).select('totalPrice patientId').lean();
             if (!prescription) {
                 return res.status(400).json({ message: `Prescription not found: ${prescriptionId}` });
             }
+
+            // So sánh Patient ID
+            if (String(prescription.patientId) !== patientIdFromReq) {
+                return res.status(400).json({
+                    message: `Patient ID mismatch: Prescription ${prescriptionId} belongs to patient ${prescription.patientId}, not ${patientIdFromReq}`
+                });
+            }
+
             prescriptionTotalPrice = Number(prescription.totalPrice) || 0;
             if (isNaN(prescriptionTotalPrice) || prescriptionTotalPrice < 0) {
                 return res.status(400).json({ message: `Invalid totalPrice for prescription: ${prescriptionId}` });
             }
         }
 
+        // 3. Kiểm tra LabOrder và Patient ID
         if (labOrderId) {
-            const labOrder = await LabOrder.findById(labOrderId).lean();
+            // Lấy cả totalPrice và patientId từ LabOrder
+            const labOrder = await LabOrder.findById(labOrderId).select('totalPrice patientId').lean();
             if (!labOrder) {
                 return res.status(400).json({ message: `LabOrder not found: ${labOrderId}` });
             }
+
+            // So sánh Patient ID
+            if (String(labOrder.patientId) !== patientIdFromReq) {
+                return res.status(400).json({
+                    message: `Patient ID mismatch: LabOrder ${labOrderId} belongs to patient ${labOrder.patientId}, not ${patientIdFromReq}`
+                });
+            }
+
             labOrderTotalPrice = Number(labOrder.totalPrice) || 0;
             if (isNaN(labOrderTotalPrice) || labOrderTotalPrice < 0) {
                 return res.status(400).json({ message: `Invalid totalPrice for labOrder: ${labOrderId}` });
             }
         }
+
+        // 4. Tạo Invoice
 
         const totalPrice = prescriptionTotalPrice + labOrderTotalPrice;
 
@@ -226,6 +272,8 @@ exports.create = async (req, res) => {
         });
         await invoice.save();
 
+        // 5. Populate và trả về kết quả
+        // Giữ nguyên phần populate và response để đảm bảo đầu ra không thay đổi
         const result = await Invoice.findById(invoice._id)
             .populate({ path: 'prescriptionId', populate: { path: 'items', populate: { path: 'medicineId', model: 'Medicine', select: 'name description price manufacturer' } } })
             .populate({ path: 'labOrderId', populate: { path: 'items', populate: { path: 'serviceId', model: 'Service', select: 'name description price' } } })
@@ -274,6 +322,7 @@ exports.create = async (req, res) => {
 
         res.status(201).json(response);
     } catch (error) {
+        // Xử lý lỗi Mongoose, v.v.
         res.status(400).json({ message: error.message });
     }
 };
