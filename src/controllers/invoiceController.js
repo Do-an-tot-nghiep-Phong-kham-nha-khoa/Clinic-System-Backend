@@ -35,11 +35,11 @@ exports.list = async (req, res) => {
                 select: 'createAt totalPrice items patientId',
                 populate: {
                     path: 'items',
-                    select: 'quantity dosage frequency duration instruction medicineId',
+                    select: 'quantity medicineId',
                     populate: {
                         path: 'medicineId',
                         model: 'Medicine',
-                        select: 'name description price manufacturer dosageForm unit expiryDate __v'
+                        select: 'name price'
                     }
                 }
             })
@@ -48,14 +48,15 @@ exports.list = async (req, res) => {
                 select: 'testTime totalPrice items patientId',
                 populate: {
                     path: 'items',
-                    select: 'quantity description serviceId',
+                    select: 'quantity serviceId',
                     populate: {
                         path: 'serviceId',
                         model: 'Service',
-                        select: 'name description price'
+                        select: 'name price'
                     }
                 }
             })
+            .populate('patientId', 'name phone')
             .lean(); // Luôn sử dụng .lean() để tăng hiệu suất
 
         const searchFields = ['_id', 'status']; // Có thể thêm các trường khác của Invoice
@@ -86,7 +87,13 @@ exports.list = async (req, res) => {
             createAt: invoice.createAt,
             totalPrice: Number(invoice.totalPrice) || 0,
             status: invoice.status,
-            patientId: invoice.patientId,
+
+            patient: invoice.patientId ? {
+                name: invoice.patientId.name,
+                phone: invoice.patientId.phone,
+            } : null,
+            // Giữ lại patientId gốc (chỉ ID) nếu cần
+            patientId: invoice.patientId ? invoice.patientId._id : null,
 
             // Format Prescription data
             prescription: invoice.prescriptionId ? {
@@ -96,11 +103,6 @@ exports.list = async (req, res) => {
                 patientId: invoice.prescriptionId.patientId,
                 items: Array.isArray(invoice.prescriptionId.items) ? invoice.prescriptionId.items.map(item => ({
                     _id: item._id,
-                    quantity: item.quantity,
-                    dosage: item.dosage,
-                    frequency: item.frequency,
-                    duration: item.duration,
-                    instruction: item.instruction,
                     medicineId: item.medicineId ? item.medicineId._id : null,
                     medicine: item.medicineId,
                 })) : []
@@ -115,7 +117,6 @@ exports.list = async (req, res) => {
                 items: Array.isArray(invoice.labOrderId.items) ? invoice.labOrderId.items.map(item => ({
                     _id: item._id,
                     quantity: item.quantity,
-                    description: item.description,
                     serviceId: item.serviceId ? item.serviceId._id : null,
                     service: item.serviceId,
                 })) : []
@@ -193,7 +194,6 @@ exports.get = async (req, res) => {
 
 // POST /api/invoices
 exports.create = async (req, res) => {
-    // Để việc so sánh dễ dàng, ta sẽ chuẩn hóa patientId từ payload
     const patientIdFromReq = req.body.patientId ? String(req.body.patientId) : null;
 
     try {

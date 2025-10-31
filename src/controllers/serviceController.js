@@ -37,6 +37,7 @@ exports.create = async (req, res) => {
             name: req.body.name,
             price: req.body.price,
             description: req.body.description,
+            created_at: new Date()
         });
         const newService = await service.save();
         res.status(201).json(newService);
