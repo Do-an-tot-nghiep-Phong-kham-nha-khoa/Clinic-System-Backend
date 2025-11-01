@@ -1,0 +1,35 @@
+version: "3.9"
+services:
+  mongo:
+    image: mongo:6
+    container_name: clinic-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+
+  api:
+    build: .
+    container_name: clinic-api
+    restart: unless-stopped
+    # No direct dependency when using Atlas
+    # depends_on:
+    #   - mongo
+    environment:
+      # Use MONGO_URL from .env (Atlas connection string)
+      MONGO_URL: ${MONGO_URL}
+      NODE_ENV: production
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    # Enable live-reload dev mode if needed by uncommenting volumes & command
+    # volumes:
+    #   - .:/app
+    # command: npm run start
+
+volumes:
+  mongo_data:

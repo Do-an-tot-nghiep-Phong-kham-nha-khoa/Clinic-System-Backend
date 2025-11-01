@@ -2,14 +2,18 @@ const dotenv = require("dotenv");
 const express = require("express");
 const cors = require("cors");
 const database = require("../config/database.js");
-const chatbot = require("./helpers/chatbot.js");
-const indexRoutes = require('./routes/indexRoutes');
+const cookieParser = require("cookie-parser");
+
 const app = express();
 
-// middleware
+app.use(cors({
+  origin: 'http://localhost:8000',
+  credentials: true
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cors());
+app.use(cookieParser());
 
 // load env and connect database
 dotenv.config();
