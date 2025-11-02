@@ -19,4 +19,6 @@ router.post("/password/otp", controller.otpPasswordPost);
 // Đặt lại mật khẩu mới
 router.post("/password/reset", controller.resetPasswordPost);
 
+// Lấy danh sách tài khoản
+router.get("/", controller.getAccounts);
 module.exports = router;

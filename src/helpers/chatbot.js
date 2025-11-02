@@ -1,5 +1,7 @@
 const axios = require("axios");
-const axiosRetry = require("axios-retry");
+let axiosRetry = require("axios-retry");
+// some environments export as { default: fn }
+if (axiosRetry && axiosRetry.default) axiosRetry = axiosRetry.default;
 const NodeCache = require("node-cache");
 const cache = new NodeCache({ stdTTL: 60 }); // cache 60s
 
@@ -11,7 +13,7 @@ axiosRetry(axios, {
     },
 });
 
-export async function getChatReply(userMessage) {
+async function getChatReply(userMessage) {
     const cached = cache.get(userMessage);
     if (cached) return cached;
 
@@ -35,3 +37,7 @@ export async function getChatReply(userMessage) {
         return "Xin lỗi, hiện tại tôi đang quá tải. Vui lòng thử lại sau.";
     }
 }
+
+module.exports = {
+    getChatReply,
+};

@@ -208,3 +208,13 @@ module.exports.resetPasswordPost = async (req, res) => {
     return res.status(500).json({ message: "Không thể đặt lại mật khẩu!" });
   }
 };
+
+// [GET] /accounts
+module.exports.getAccounts = async (req, res) => {
+  try {
+    const accounts = await Account.find({ deleted: false }).populate('roleId', 'name');
+    return res.status(200).json({ accounts });
+  } catch (error) {
+    return res.status(500).json({ message: "Không thể lấy danh sách tài khoản!" });
+  }
+};
