@@ -19,4 +19,10 @@ router.post("/password/otp", controller.otpPasswordPost);
 // Đặt lại mật khẩu mới
 router.post("/password/reset", controller.resetPasswordPost);
 
+// Lấy patient theo accountId
+router.get('/account/:accountId', controller.getByAccountId);
+
+// Cập nhật thông tin bệnh nhân 
+router.put('/:id', controller.update);
+
 module.exports = router;
