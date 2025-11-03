@@ -23,8 +23,11 @@ router.get("/:id", controller.getPatientById);
 
 router.get("/", controller.getAllPatients);
 
-router.put("/:id", controller.updatePatient);
-
 router.delete("/:id", controller.deletePatient);
+// Lấy patient theo accountId
+router.get('/account/:accountId', controller.getByAccountId);
+
+// Cập nhật thông tin bệnh nhân 
+router.put('/:id', controller.update);
 
 module.exports = router;

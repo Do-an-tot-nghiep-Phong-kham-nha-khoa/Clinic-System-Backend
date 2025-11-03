@@ -22,6 +22,6 @@ router.delete("/:id", doctorController.deleteDoctor);
 router.get("/search", doctorController.searchDoctors);
 
 // Lấy bác sĩ theo chuyên khoa
-router.get("/expertise/:expertise", doctorController.getDoctorsByExpertise);
+router.get("/specialty/:specialtyId", doctorController.getDoctorsBySpecialty);
 
 module.exports = router;

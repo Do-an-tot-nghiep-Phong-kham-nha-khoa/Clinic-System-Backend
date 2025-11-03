@@ -179,31 +179,6 @@ module.exports.getPatientById = async (req, res) => {
   }
 };
 
-// [PUT] /patients/:id
-module.exports.updatePatient = async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (!mongoose.isValidObjectId(id)) return res.status(400).json({ message: 'Id không hợp lệ' });
-
-    const updateData = { ...req.body };
-    // prevent changing protected fields
-    delete updateData._id;
-    delete updateData.createdAt;
-    delete updateData.updatedAt;
-
-    if (updateData.password) {
-      updateData.password = bcrypt.hashSync(updateData.password, 10);
-    }
-
-    const updated = await Patient.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
-    if (!updated) return res.status(404).json({ message: 'Không tìm thấy bệnh nhân để cập nhật' });
-
-    return res.status(200).json({ message: 'Cập nhật bệnh nhân thành công', data: updated });
-  } catch (err) {
-    console.error('Error updating patient:', err);
-    return res.status(400).json({ message: 'Lỗi khi cập nhật bệnh nhân', error: err.message });
-  }
-};
 
 // [DELETE] /patients/:id  (soft delete)
 module.exports.deletePatient = async (req, res) => {
@@ -224,3 +199,63 @@ module.exports.deletePatient = async (req, res) => {
     return res.status(500).json({ message: 'Lỗi khi xóa bệnh nhân', error: err.message });
   }
 };
+// [GET] /patients/account/:accountId
+module.exports.getByAccountId = async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(accountId)) {
+      return res.status(400).json({ message: 'Invalid accountId' });
+    }
+
+    let query = Patient.findOne({ accountId });
+    if (String(req.query.populate).toLowerCase() === 'true') {
+      query = query.populate('accountId');
+    }
+    const patient = await query.lean();
+
+    if (!patient) return res.status(404).json({ message: 'Patient not found' });
+    return res.json(patient);
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+// [PUT] /patients/:id 
+module.exports.update = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'ID không hợp lệ!' });
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, 'accountId')) {
+      return res.status(400).json({ message: 'Không thể cập nhật accountId!' });
+    }
+
+    // Chỉ cho phép cập nhật các trường sau
+    const allowedFields = ['name', 'dob', 'phone', 'address', 'gender'];
+    const update = {};
+    for (const key of allowedFields) {
+      if (req.body[key] !== undefined) update[key] = req.body[key];
+    }
+
+    // Validate gender nếu có
+    if (update.gender && !['male', 'female', 'other'].includes(update.gender)) {
+      return res.status(400).json({ message: 'Giới tính không hợp lệ!' });
+    }
+
+    // Check unique phone nếu có cập nhật
+    if (update.phone) {
+      const exists = await Patient.findOne({ phone: update.phone, _id: { $ne: id } });
+      if (exists) return res.status(400).json({ message: 'Số điện thoại đã tồn tại!' });
+    }
+
+    const updated = await Patient.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
+    if (!updated) return res.status(404).json({ message: 'Không tìm thấy bệnh nhân!' });
+
+    return res.json(updated);
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
