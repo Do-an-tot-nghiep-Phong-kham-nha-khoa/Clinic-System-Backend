@@ -3,61 +3,43 @@ const Patient = require('../models/patient');
 const Doctor = require('../models/doctor');
 const Schedule = require('../models/schedule');
 const Specialty = require('../models/specialty');
+const HealthProfile = require('../models/healthProfile');
 
-// [POST] /appointments
-module.exports.create = async (req, res) => {
+// [POST] /appointments/by-doctor
+module.exports.createByDoctor = async (req, res) => {
   try {
-    const { booker_id, profileId, profileModel, doctor_id, specialty_id, appointmentDate, timeSlot, reason } = req.body;
+    const { booker_id, healthProfile_id, doctor_id, specialty_id, appointmentDate, timeSlot, reason } = req.body;
 
     // ==== 1. Validate cơ bản ====
-    if (!booker_id || !profileId || !profileModel || !appointmentDate || !timeSlot || !reason) {
+    if (!booker_id || !healthProfile_id || !appointmentDate || !timeSlot || !reason) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
     // ==== 2. Kiểm tra bệnh nhân ====
-    let profile = null;
-    if (profileModel === 'Patient') {
-      profile = await Patient.findById(profileId);
-    } else if (profileModel === 'FamilyMember') {
-      profile = await FamilyMember.findOne({ _id: profileId, owner_id: booker_id });
-    } else {
-      return res.status(400).json({ message: 'Invalid profile model' });
+    const booker = await Patient.findById(booker_id);
+    if (!booker) return res.status(404).json({ message: 'Profile not found or not owned by booker' });
+
+    // ==== 3. Kiểm tra health profile ====
+    const profile = await HealthProfile.findById(healthProfile_id);
+    if (!profile) {
+      return res.status(404).json({ message: 'Health profile not found' });
     }
 
-    if (!profile) return res.status(404).json({ message: 'Profile not found or not owned by booker' });
-
-    // ==== 3. Kiểm tra trùng lịch ====
-    const existAppointment = await Appointment.findOne({
-      profile: profileId,
-      appointmentDate: new Date(appointmentDate),
-      timeSlot,
-    });
-
-    if (existAppointment) {
-      return res.status(400).json({ message: 'This profile already has an appointment at this time' });
-    }
-
-    let doctor = null;
-    let specialty = null;
-
-    // ==== 4. Nếu đặt theo bác sĩ ====
+    // ==== 4. Đặt theo bác sĩ ====
+    let doctor, specialty;
     if (doctor_id && !specialty_id) {
       doctor = await Doctor.findById(doctor_id);
       if (!doctor) return res.status(404).json({ message: 'Doctor not found' });
 
       // Lấy specialty từ bác sĩ
       specialty = doctor.specialtyId;
+      // Tìm schedule của bác sĩ cho ngày đó
 
-      // Kiểm tra schedule bác sĩ ngày đó
-      const startOfDay = new Date(appointmentDate);
-      startOfDay.setUTCHours(0, 0, 0, 0);
-
-      const endOfDay = new Date(appointmentDate);
-      endOfDay.setUTCHours(23, 59, 59, 999);
-
+      const dateOnly = new Date(appointmentDate);
+      // dateOnly.setHours(0, 0, 0, 0);
       const schedule = await Schedule.findOne({
-        doctor_id: doctor._id,
-        date: { $gte: startOfDay, $lte: endOfDay }
+        doctor_id,
+        date: dateOnly,
       });
 
       if (!schedule) {
@@ -65,20 +47,17 @@ module.exports.create = async (req, res) => {
       }
 
       // Tìm slot
-      const slotIndex = schedule.timeSlots.findIndex(slot => slot.startTime === timeSlot);
-      if (slotIndex === -1) {
-        return res.status(400).json({ message: 'Invalid time slot for this doctor' });
-      }
+      const slot = schedule.timeSlots.find((s) => s.startTime === timeSlot);
+      if (!slot)
+        return res.status(400).json({ message: "Invalid time slot" });
 
-      if (schedule.timeSlots[slotIndex].isBooked) {
-        return res.status(400).json({ message: 'This time slot is already booked' });
-      }
+      if (slot.isBooked)
+        return res.status(400).json({ message: "Time slot already booked" });
 
       // Tạo appointment
       const newAppointment = new Appointment({
         booker_id,
-        profile: profileId,
-        profileModel,
+        healthProfile_id,
         doctor_id: doctor._id,
         specialty_id: specialty,
         appointmentDate,
@@ -90,16 +69,10 @@ module.exports.create = async (req, res) => {
       await newAppointment.save();
 
       // Cập nhật schedule
-      schedule.timeSlots[slotIndex].isBooked = true;
-      schedule.timeSlots[slotIndex].appointment_id = newAppointment._id;
-      await Schedule.updateOne(
-        { _id: schedule._id, "timeSlots.startTime": timeSlot },
-        {
-          $set: {
-            "timeSlots.$.isBooked": true,
-            "timeSlots.$.appointment_id": newAppointment._id
-          }
-        }
+      await Schedule.findOneAndUpdate(
+        { doctor_id, date: dateOnly, "timeSlots.startTime": timeSlot },
+        { $set: { "timeSlots.$.isBooked": true } },
+        { new: true }
       );
 
       return res.status(201).json({
@@ -108,31 +81,31 @@ module.exports.create = async (req, res) => {
       });
     }
 
-    // ==== 4. Nếu đặt theo chuyên khoa ====
-    if (!specialty_id) {
-      return res.status(400).json({ message: 'specialty_id is required when booking by specialty' });
-    }
+    // // ==== 4. Nếu đặt theo chuyên khoa ====
+    // if (!specialty_id) {
+    //   return res.status(400).json({ message: 'specialty_id is required when booking by specialty' });
+    // }
 
-    specialty = await Specialty.findById(specialty_id);
-    if (!specialty) return res.status(404).json({ message: 'Specialty not found' });
+    // specialty = await Specialty.findById(specialty_id);
+    // if (!specialty) return res.status(404).json({ message: 'Specialty not found' });
 
-    const newAppointment = new Appointment({
-      booker_id,
-      profile: profileId,
-      profileModel,
-      specialty_id: specialty._id,
-      appointmentDate,
-      timeSlot,
-      reason,
-      status: "waiting_assigned"
-    });
+    // const newAppointment = new Appointment({
+    //   booker_id,
+    //   profile: profileId,
+    //   profileModel,
+    //   specialty_id: specialty._id,
+    //   appointmentDate,
+    //   timeSlot,
+    //   reason,
+    //   status: "waiting_assigned"
+    // });
 
-    await newAppointment.save();
+    // await newAppointment.save();
 
-    return res.status(201).json({
-      message: 'Appointment booked successfully under specialty (waiting for doctor assignment)',
-      appointment: newAppointment,
-    });
+    // return res.status(201).json({
+    //   message: 'Appointment booked successfully under specialty (waiting for doctor assignment)',
+    //   appointment: newAppointment,
+    // });
 
   } catch (error) {
     console.error('Error creating appointment:', error);

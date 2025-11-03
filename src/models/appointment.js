@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const specialty = require('./specialty');
 
 const appointmentSchema = new mongoose.Schema({
     booker_id: {
@@ -7,15 +6,10 @@ const appointmentSchema = new mongoose.Schema({
         ref: 'Patient',
         required: true
     },
-    profile: { 
-        type: mongoose.Schema.Types.ObjectId, 
-        required: true, 
-        refPath: "profileModel" 
-    },
-    profileModel: { 
-        type: String, 
-        required: true, 
-        enum: ['Patient', 'FamilyMember'] 
+    healthProfile_id: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'HealthProfile',
+        required: true
     },
     doctor_id: {
         type: mongoose.Schema.Types.ObjectId,

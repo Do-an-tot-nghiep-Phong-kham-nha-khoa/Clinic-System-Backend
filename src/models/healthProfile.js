@@ -1,11 +1,8 @@
 const mongoose = require("mongoose");
+
 const healthProfileSchema = new mongoose.Schema({
-    patient_id: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Patient",
-        required: true,
-        unique: true,
-    },
+    ownerId: { type: mongoose.Schema.Types.ObjectId, required: true, refPath: "ownerModel" },
+    ownerModel: { type: String, required: true, enum: ["Patient", "FamilyMember"] },
     height: { type: Number }, // in cm
     weight: { type: Number }, // in kg
     bloodType: { type: String, enum: ["A", "B", "AB", "O"] },

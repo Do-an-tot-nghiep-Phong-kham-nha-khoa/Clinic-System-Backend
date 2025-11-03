@@ -5,7 +5,7 @@ const generate = require('../helpers/generate');
 const accountSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    roleId: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Role' }], // hỗ trợ nhiều vai trò
+    roleId: { type: mongoose.Schema.Types.ObjectId, ref: 'Role' }, 
     status: {
         type: String,
         default: "active"

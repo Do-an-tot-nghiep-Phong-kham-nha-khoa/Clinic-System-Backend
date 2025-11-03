@@ -1,124 +1,122 @@
+// controllers/doctor.controller.js
 const Doctor = require("../models/doctor");
-
+const Schedule = require("../models/schedule");
+const Account = require("../models/account");
+const Role = require("../models/role");
 class DoctorController {
-  // Tạo bác sĩ mới (theo model mới: name, specialtyId, phone, email, password, experience, schedule[])
+  // Tạo bác sĩ mới (tạo kèm Account nếu cần)
   async createDoctor(req, res) {
     try {
-      const { name, specialtyId, phone, email, password, experience, schedule } = req.body;
+      const { name, specialtyId, phone, email, password, experience } = req.body;
 
-      // Validate required fields
-      if (!name || !specialtyId) {
+      if (!name || !specialtyId || !email || !password) {
         return res.status(400).json({
-          message: "Thiếu thông tin bắt buộc: name, specialtyId"
+          message: "Thiếu thông tin bắt buộc: name, specialtyId, email, password",
         });
       }
 
-      // Optional duplicate check for email/phone if provided
-      if (email || phone) {
-        const existingDoctor = await Doctor.findOne({
-          $or: [email ? { email } : null, phone ? { phone } : null].filter(Boolean)
-        });
-        if (existingDoctor) {
-          return res.status(400).json({
-            message: "Bác sĩ với email hoặc số điện thoại này đã tồn tại"
-          });
-        }
+      // Kiểm tra account trùng email
+      const existingAccount = await Account.findOne({ email });
+      if (existingAccount) {
+        return res.status(400).json({ message: "Email đã được sử dụng" });
       }
 
-      // Basic schedule validation (if provided)
-      let normalizedSchedule = undefined;
-      if (Array.isArray(schedule)) {
-        normalizedSchedule = schedule.map((s) => ({
-          day: s.day,
-          timeSlots: Array.isArray(s.timeSlots) ? s.timeSlots : []
-        }));
+      const doctorRole = await Role.findOne({ name: 'doctor' });
+      if (!doctorRole) {
+        return res.status(500).json({ message: "Role doctor chưa được cấu hình trong hệ thống!" });
       }
+      // Tạo account mới cho bác sĩ
+      const newAccount = new Account({
+        email,
+        password,
+        roleId: doctorRole._id, // Đính ID role bác sĩ
+      });
+      const savedAccount = await newAccount.save();
 
-      const doctor = new Doctor({
+      // Tạo doctor record
+      const newDoctor = new Doctor({
+        accountId: savedAccount._id,
         name,
         specialtyId,
         phone,
-        email,
-        password,
         experience,
-        schedule: normalizedSchedule
       });
-      const savedDoctor = await doctor.save();
+      const savedDoctor = await newDoctor.save();
 
       res.status(201).json({
         message: "Tạo bác sĩ thành công",
-        data: savedDoctor
+        data: savedDoctor,
       });
     } catch (err) {
       console.error("Error creating doctor:", err);
-      res.status(400).json({
+      res.status(500).json({
         message: "Lỗi khi tạo bác sĩ",
-        error: err.message
+        error: err.message,
       });
     }
   }
 
-  // Lấy danh sách tất cả bác sĩ
+  // Lấy danh sách bác sĩ (lọc theo chuyên khoa, phân trang)
   async getAllDoctors(req, res) {
     try {
-      console.log("Fetching all doctors...");
-      // Support filter by specialtyId and name via query + pagination
       const { specialtyId, name, page = 1, limit = 10 } = req.query;
       const filter = {};
+
       if (specialtyId) filter.specialtyId = specialtyId;
       if (name) filter.name = new RegExp(name, "i");
 
-      const pageNumber = Math.max(parseInt(page) || 1, 1);
-      const pageSize = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
+      const pageNumber = Math.max(parseInt(page), 1);
+      const pageSize = Math.min(parseInt(limit), 100);
 
-      const [items, total] = await Promise.all([
+      const [doctors, total] = await Promise.all([
         Doctor.find(filter)
+          .populate("specialtyId", "name")
+          .populate("accountId", "email status")
           .skip((pageNumber - 1) * pageSize)
           .limit(pageSize),
-        Doctor.countDocuments(filter)
+        Doctor.countDocuments(filter),
       ]);
-      
+
       res.status(200).json({
         message: "Lấy danh sách bác sĩ thành công",
-        count: items.length,
-        data: items,
+        data: doctors,
         pagination: {
           page: pageNumber,
           pageSize,
           totalItems: total,
-          totalPages: Math.ceil(total / pageSize)
-        }
+          totalPages: Math.ceil(total / pageSize),
+        },
       });
     } catch (err) {
-      console.error("Error fetching doctors:", err);
-      res.status(500).json({ 
+      res.status(500).json({
         message: "Lỗi khi lấy danh sách bác sĩ",
-        error: err.message 
+        error: err.message,
       });
     }
   }
 
-  // Lấy thông tin bác sĩ theo ID
+  // Lấy chi tiết bác sĩ theo ID (kèm lịch làm việc)
   async getDoctorById(req, res) {
     try {
       const { id } = req.params;
-      const doctor = await Doctor.findById(id);
+      const doctor = await Doctor.findById(id)
+        .populate("specialtyId", "name")
+        .populate("accountId", "email status");
 
-      if (!doctor) {
-        return res.status(404).json({ 
-          message: "Không tìm thấy bác sĩ" 
-        });
-      }
+      if (!doctor)
+        return res.status(404).json({ message: "Không tìm thấy bác sĩ" });
+
+      // Lấy lịch làm việc
+      const schedules = await Schedule.find({ doctor_id: id });
 
       res.status(200).json({
         message: "Lấy thông tin bác sĩ thành công",
-        data: doctor
+        data: { doctor, schedules },
       });
     } catch (err) {
-      console.error("Error fetching doctor by ID:", err);
-      res.status(500).json({ 
+      res.status(500).json({
         message: "Lỗi khi lấy thông tin bác sĩ",
-        error: err.message 
+        error: err.message,
       });
     }
   }
@@ -129,32 +127,22 @@ class DoctorController {
       const { id } = req.params;
       const updateData = req.body;
 
-      // Remove fields that shouldn't be updated directly
-      delete updateData._id;
-      delete updateData.createdAt;
-      delete updateData.updatedAt;
+      const updatedDoctor = await Doctor.findByIdAndUpdate(id, updateData, {
+        new: true,
+        runValidators: true,
+      });
 
-      const updatedDoctor = await Doctor.findByIdAndUpdate(
-        id, 
-        updateData, 
-        { new: true, runValidators: true }
-      );
-
-      if (!updatedDoctor) {
-        return res.status(404).json({ 
-          message: "Không tìm thấy bác sĩ để cập nhật" 
-        });
-      }
+      if (!updatedDoctor)
+        return res.status(404).json({ message: "Không tìm thấy bác sĩ" });
 
       res.status(200).json({
-        message: "Cập nhật thông tin bác sĩ thành công",
-        data: updatedDoctor
+        message: "Cập nhật bác sĩ thành công",
+        data: updatedDoctor,
       });
     } catch (err) {
-      console.error("Error updating doctor:", err);
-      res.status(400).json({ 
-        message: "Lỗi khi cập nhật thông tin bác sĩ",
-        error: err.message 
+      res.status(500).json({
+        message: "Lỗi khi cập nhật bác sĩ",
+        error: err.message,
       });
     }
   }
@@ -163,35 +151,52 @@ class DoctorController {
   async deleteDoctor(req, res) {
     try {
       const { id } = req.params;
-      const deletedDoctor = await Doctor.findByIdAndDelete(id);
+      const doctor = await Doctor.findByIdAndDelete(id);
+      if (!doctor)
+        return res.status(404).json({ message: "Không tìm thấy bác sĩ" });
 
-      if (!deletedDoctor) {
-        return res.status(404).json({ 
-          message: "Không tìm thấy bác sĩ để xóa" 
-        });
-      }
+      // Optionally: xóa luôn account hoặc schedule liên quan
+      await Account.findByIdAndDelete(doctor.accountId);
+      await Schedule.deleteMany({ doctor_id: id });
 
       res.status(200).json({
-        message: "Xóa bác sĩ thành công",
-        data: deletedDoctor
+        message: "Xóa bác sĩ và dữ liệu liên quan thành công",
       });
     } catch (err) {
-      console.error("Error deleting doctor:", err);
-      res.status(500).json({ 
+      res.status(500).json({
         message: "Lỗi khi xóa bác sĩ",
-        error: err.message 
+        error: err.message,
       });
     }
   }
 
-  // Tìm kiếm bác sĩ theo tên, email, phone hoặc ngày làm việc
+  // Lọc bác sĩ theo chuyên khoa
+  async getDoctorsBySpecialty(req, res) {
+    try {
+      const { specialtyId } = req.params;
+      const doctors = await Doctor.find({ specialtyId })
+        .populate("specialtyId", "name")
+        .populate("accountId", "email status");
+
+      res.status(200).json({
+        message: "Lấy danh sách bác sĩ theo chuyên khoa thành công",
+        count: doctors.length,
+        data: doctors,
+      });
+    } catch (err) {
+      res.status(500).json({
+        message: "Lỗi khi lấy bác sĩ theo chuyên khoa",
+        error: err.message,
+      });
+    }
+  }
   async searchDoctors(req, res) {
     try {
-  const { query, page = 1, limit = 10 } = req.query;
+      const { query, page = 1, limit = 10 } = req.query;
 
       if (!query) {
-        return res.status(400).json({ 
-          message: "Vui lòng cung cấp từ khóa tìm kiếm" 
+        return res.status(400).json({
+          message: "Vui lòng cung cấp từ khóa tìm kiếm"
         });
       }
 
@@ -228,30 +233,9 @@ class DoctorController {
       });
     } catch (err) {
       console.error("Error searching doctors:", err);
-      res.status(500).json({ 
+      res.status(500).json({
         message: "Lỗi khi tìm kiếm bác sĩ",
-        error: err.message 
-      });
-    }
-  }
-
-  // Lấy bác sĩ theo chuyên khoa (mapping route param 'expertise' -> specialtyId)
-  async getDoctorsByExpertise(req, res) {
-    try {
-      const { expertise } = req.params; // actually specialtyId
-      const doctors = await Doctor.find({ specialtyId: expertise });
-
-      res.status(200).json({
-        message: "Lấy danh sách bác sĩ theo chuyên khoa (specialty) thành công",
-        specialtyId: expertise,
-        count: doctors.length,
-        data: doctors
-      });
-    } catch (err) {
-      console.error("Error fetching doctors by expertise:", err);
-      res.status(500).json({ 
-        message: "Lỗi khi lấy danh sách bác sĩ theo chuyên khoa",
-        error: err.message 
+        error: err.message
       });
     }
   }
