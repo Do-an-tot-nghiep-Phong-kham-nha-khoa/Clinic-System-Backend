@@ -2,15 +2,15 @@ const HealthProfile = require('../models/healthProfile');
 // [GET] /health-profile/:patientId
 module.exports.getHealthProfile = async (req, res) => {
     try {
-        const { patientId } = req.params;
-        const healthProfile = await HealthProfile.findOne({ patient_id: patientId });
-        if (!healthProfile) {
-            return res.status(404).json({ message: "Health profile not found" });
-        }
-        res.json(healthProfile);
+        const profiles = await HealthProfile.find({
+            ownerId: req.params.patient_id
+        });
+        if (!profiles.length)
+            return res.status(404).json({ message: "No health profiles found" });
+        
+        res.status(200).json(profiles);
     } catch (error) {
-        console.error("Error fetching health profile:", error);
-        res.status(500).json({ message: "Internal server error" });
+        res.status(500).json({ message: "Error fetching health profiles", error });
     }
 };
 
@@ -59,5 +59,5 @@ module.exports.updateHealthProfile = async (req, res) => {
     } catch (error) {
         console.error("Error updating health profile:", error);
         res.status(500).json({ message: "Internal server error" });
-    }   
+    }
 };
