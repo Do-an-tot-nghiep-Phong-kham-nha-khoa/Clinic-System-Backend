@@ -1,5 +1,6 @@
 const express = require("express");
 const controller = require("../controllers/accountController");
+const { route } = require("./patientRoutes");
 const router = express.Router();
 // Đăng ký tài khoản mới
 router.post("/register", controller.register);
@@ -21,4 +22,12 @@ router.post("/password/reset", controller.resetPasswordPost);
 
 // Lấy danh sách tài khoản
 router.get("/", controller.getAccounts);
+
+router.get("/:id", controller.getAccountById);
+
+router.delete("/:id", controller.deleteAccount);
+
+router.put("/:id", controller.updateAccount);
+// Lấy danh sách vai trò
+router.get("/role/:role_id", controller.getRole);
 module.exports = router;
