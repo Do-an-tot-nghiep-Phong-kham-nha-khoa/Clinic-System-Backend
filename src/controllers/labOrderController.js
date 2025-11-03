@@ -79,10 +79,18 @@ exports.list = async (req, res) => {
 // POST /api/laborders
 exports.create = async (req, res) => {
     try {
-        const { testTime = new Date().toISOString(), items } = req.body;
+        const { testTime = new Date().toISOString(), items, patientId } = req.body;
         if (!Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ message: 'Items (services) are required' });
         }
+
+        if (!patientId) { // Kiểm tra patientId
+            return res.status(400).json({ message: 'Patient ID is required' });
+        }
+        if (!mongoose.isValidObjectId(patientId)) { // Kiểm tra tính hợp lệ của ObjectId
+            return res.status(400).json({ message: `Invalid Patient ID format: ${patientId}` });
+        }
+
         const required = ['serviceId', 'quantity'];
         for (const item of items) {
             if (!item || required.some((k) => item[k] == null)) {
@@ -108,12 +116,18 @@ exports.create = async (req, res) => {
             description: it.description || undefined // Include description only if provided
         }));
         // Create and save the LabOrder with embedded items
-        const labOrder = new LabOrder({ testTime, totalPrice, items: formattedItems });
+        const labOrder = new LabOrder({
+            testTime,
+            totalPrice,
+            items: formattedItems,
+            patientId: new mongoose.Types.ObjectId(patientId) // Thêm patientId đã chuyển đổi thành ObjectId
+        });
         await labOrder.save();
         // Populate the embedded items' serviceId
         const result = await LabOrder.findById(labOrder._id)
             .populate('items.serviceId', 'name description price')
             .lean();
+
         if (!result || !Array.isArray(result.items)) {
             return res.status(500).json({ message: 'Failed to populate items' });
         }
@@ -123,7 +137,7 @@ exports.create = async (req, res) => {
             testTime: result.testTime,
             totalPrice: result.totalPrice,
             createdAt: result.createdAt,
-            updatedAt: result.updatedAt,
+            patientId: result.patientId,
             items: result.items.filter(Boolean).map((item) => ({
                 quantity: item.quantity,
                 description: item.description,

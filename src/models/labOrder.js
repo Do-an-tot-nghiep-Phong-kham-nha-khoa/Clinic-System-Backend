@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const patient = require('./patient');
 
 const labOrderSchema = new mongoose.Schema({
     testTime: {
@@ -7,6 +8,11 @@ const labOrderSchema = new mongoose.Schema({
     },
     totalPrice: {
         type: Number,
+        required: true
+    },
+    patientId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Patient',
         required: true
     },
     items: [{
