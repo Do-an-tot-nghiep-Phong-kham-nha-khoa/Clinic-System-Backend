@@ -293,3 +293,52 @@ module.exports.getAppointmentById = async (req, res) => {
     res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+// [POST] /appointments/by-specialty
+module.exports.createBySpecialty = async (req, res) => {
+  try {
+    const { booker_id, healthProfile_id, specialty_id, appointmentDate, timeSlot, reason } = req.body;
+
+    // 1. Validate
+    if (!booker_id || !healthProfile_id || !specialty_id || !appointmentDate || !timeSlot || !reason) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    // 2. Kiểm tra bệnh nhân có tồn tại
+    const booker = await Patient.findById(booker_id);
+    if (!booker) {
+      return res.status(404).json({ message: 'Booker not found' });
+    }
+
+    // 3. Kiểm tra health profile thuộc về bệnh nhân này
+    const profile = await HealthProfile.findById(healthProfile_id);
+    if (!profile) return res.status(404).json({ message: 'Health profile not found' });
+
+    // 4. Kiểm tra specialty có tồn tại
+    const specialty = await Specialty.findById(specialty_id);
+    if (!specialty) return res.status(404).json({ message: 'Specialty not found' });
+
+    // 5. Tạo appointment mới (chưa gán doctor => doctor_id null)
+    const newAppointment = new Appointment({
+      booker_id,
+      healthProfile_id,
+      specialty_id,
+      appointmentDate,
+      timeSlot,
+      reason,
+      status: "waiting_assigned",
+      doctor_id: null
+    });
+
+    await newAppointment.save();
+
+    return res.status(201).json({
+      message: 'Appointment booked successfully by specialty',
+      appointment: newAppointment
+    });
+
+  } catch (error) {
+    console.error("Error creating appointment by specialty:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};

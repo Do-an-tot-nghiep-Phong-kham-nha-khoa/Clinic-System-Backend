@@ -11,4 +11,5 @@ router.get("/booker/:id", controller.getAppointmentsByBooker);
 router.get("/doctor/:id", controller.getAppointmentsByDoctor);
 router.get("/", controller.getAllAppointments);
 router.put("/:id/status", controller.updateStatus);
+router.post("/by-specialty", controller.createBySpecialty);
 module.exports = router;
