@@ -57,6 +57,7 @@ class DoctorController {
   }
 
   // Lấy danh sách bác sĩ (lọc theo chuyên khoa, phân trang)
+  // [GET] /doctors
   async getAllDoctors(req, res) {
     try {
       const { specialtyId, name, page = 1, limit = 10 } = req.query;
@@ -186,7 +187,7 @@ class DoctorController {
     } catch (err) {
       res.status(500).json({
         message: "Lỗi khi lấy bác sĩ theo chuyên khoa",
-        error: err.message,
+        error: err.message ,
       });
     }
   }

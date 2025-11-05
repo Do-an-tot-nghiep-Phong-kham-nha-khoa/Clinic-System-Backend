@@ -6,6 +6,8 @@ const doctorSchema = new mongoose.Schema({
   specialtyId: { type: mongoose.Schema.Types.ObjectId, ref: "Specialty", required: true },
   phone: String,
   experience: Number,
+  avatar: String,
+  
 });
 
 module.exports = mongoose.model("Doctor", doctorSchema);
