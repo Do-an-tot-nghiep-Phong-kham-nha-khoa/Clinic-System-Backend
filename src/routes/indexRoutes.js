@@ -11,6 +11,7 @@ const healthProfileRoutes = require('./healthProfileRoutes');
 const scheduleRoutes = require('./scheduleRoutes');
 const specialtyRoutes = require('./specialtyRoutes');
 const receptionistRoutes = require('./receptionistRoutes');
+const familyMemberRoutes = require('./familyMemberRoutes');
 const userMiddleware = require('../middlewares/user_middleware');
 
 module.exports = (app) => {
@@ -27,4 +28,5 @@ module.exports = (app) => {
     app.use('/schedules', scheduleRoutes);
     app.use('/specialties', specialtyRoutes);
     app.use('/receptionists', receptionistRoutes);
+    app.use('/family-members', familyMemberRoutes);
 }
