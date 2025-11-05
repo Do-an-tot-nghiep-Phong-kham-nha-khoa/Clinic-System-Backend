@@ -5,5 +5,7 @@ const router = express.Router();
 router.get('/:patientId', controller.getHealthProfile);
 router.post('/:patientId', controller.createHealthProfile);
 router.patch('/:patientId', controller.updateHealthProfile);
+router.get('/all/:patientId', controller.getAllHealthProfiles);
+router.post('/:ownerModel/:ownerId', controller.createHealthProfileNew);
 
 module.exports = router;
