@@ -28,4 +28,3 @@ module.exports.getDoctorScheduleByDate = async (req, res) => {
         res.status(500).json({ message: "Error fetching available slots", error });
     }
 };
-
