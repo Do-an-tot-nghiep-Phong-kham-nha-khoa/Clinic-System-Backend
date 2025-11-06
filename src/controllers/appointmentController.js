@@ -36,10 +36,16 @@ module.exports.createByDoctor = async (req, res) => {
       // Tìm schedule của bác sĩ cho ngày đó
 
       const dateOnly = new Date(appointmentDate);
-      // dateOnly.setHours(0, 0, 0, 0);
+
+      const startOfDay = new Date(dateOnly);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(dateOnly);
+      endOfDay.setHours(23, 59, 59, 999);
+
       const schedule = await Schedule.findOne({
         doctor_id,
-        date: dateOnly,
+        date: { $gte: startOfDay, $lte: endOfDay },
       });
 
       if (!schedule) {
@@ -47,7 +53,12 @@ module.exports.createByDoctor = async (req, res) => {
       }
 
       // Tìm slot
-      const slot = schedule.timeSlots.find((s) => s.startTime === timeSlot);
+      const normalize = (t) => t.split(" ")[0].split("-")[0].trim().slice(0, 5); // lấy "HH:MM"
+      const normalizedInput = normalize(timeSlot);
+
+      const slot = schedule.timeSlots.find(
+        (s) => normalize(s.startTime) === normalizedInput
+      );
       if (!slot)
         return res.status(400).json({ message: "Invalid time slot" });
 

@@ -3,6 +3,8 @@ const Doctor = require("../models/doctor");
 const Schedule = require("../models/schedule");
 const Account = require("../models/account");
 const Role = require("../models/role");
+const bcrypt = require("bcrypt");
+
 class DoctorController {
   // Tạo bác sĩ mới (tạo kèm Account nếu cần)
   async createDoctor(req, res) {
@@ -25,10 +27,14 @@ class DoctorController {
       if (!doctorRole) {
         return res.status(500).json({ message: "Role doctor chưa được cấu hình trong hệ thống!" });
       }
+
+      // Hash password
+      const hashedPassword = await bcrypt.hash(password, 10);
+
       // Tạo account mới cho bác sĩ
       const newAccount = new Account({
         email,
-        password,
+        password: hashedPassword,
         roleId: doctorRole._id, // Đính ID role bác sĩ
       });
       const savedAccount = await newAccount.save();
@@ -237,6 +243,28 @@ class DoctorController {
       res.status(500).json({
         message: "Lỗi khi tìm kiếm bác sĩ",
         error: err.message
+      });
+    }
+  }
+  // Lấy bác sĩ theo account id
+  async getDoctorByAccountId(req, res) {
+    try {
+      const { accountId } = req.params;
+      const doctor = await Doctor.findOne({ accountId })
+        .populate("specialtyId", "name")
+        .populate("accountId", "email status");
+      if (!doctor) {
+        return res.status(404).json({ message: "Không tìm thấy bác sĩ" });
+      }
+      res.status(200).json({
+        message: "Lấy thông tin bác sĩ thành công",
+        data: doctor,
+      });
+    }
+    catch (err) {
+      res.status(500).json({
+        message: "Lỗi khi lấy thông tin bác sĩ",
+        error: err.message,
       });
     }
   }

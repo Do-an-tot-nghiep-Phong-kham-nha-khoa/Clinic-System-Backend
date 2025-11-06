@@ -1,4 +1,5 @@
 const Schedule = require('../models/schedule');
+const Doctor = require('../models/doctor');
 
 // [GET] /schedules/:doctor_id
 module.exports.getDoctorScheduleByID = async (req, res) => {
@@ -29,3 +30,85 @@ module.exports.getDoctorScheduleByDate = async (req, res) => {
     }
 };
 
+// [GET] /schedules/specialty/:specialty_id/:date
+module.exports.getAvailableTimeSlotsBySpecialty = async (req, res) => {
+    try {
+        const { specialty_id, date } = req.params;
+
+        // Step 1: find all doctors of this specialty
+        const doctors = await Doctor.find({ specialtyId: specialty_id });
+
+        if (doctors.length === 0) {
+            return res.status(404).json({ message: "No doctors found for this specialty" });
+        }
+
+        const doctorIds = doctors.map(d => d._id);
+
+        const startDate = new Date(date);
+        const endDate = new Date(date);
+        endDate.setHours(23, 59, 59, 999);
+
+        // Step 2: find all schedules of these doctors at that date
+        const schedules = await Schedule.find({
+            doctor_id: { $in: doctorIds },
+            date: { $gte: startDate, $lte: endDate }
+        });
+
+        if (schedules.length === 0) {
+            return res.status(404).json({ message: "No schedule found for this specialty/date" });
+        }
+
+        let result = [];
+
+        schedules.forEach(sch => {
+            sch.timeSlots.forEach(slot => {
+                if (!slot.isBooked) {
+                    result.push({
+                        doctor_id: sch.doctor_id,
+                        startTime: slot.startTime,
+                        endTime: slot.endTime
+                    })
+                }
+            })
+        });
+
+        res.status(200).json(result);
+
+    } catch (error) {
+        console.error("Error fetching available slots:", error);
+        return res.status(500).json({ message: "Error fetching available slots", error });
+    }
+};
+
+// [POST] /schedules
+module.exports.createSchedule = async (req, res) => {
+    try {
+        const { doctor_id, date, timeSlots } = req.body;
+
+        if (!doctor_id || !date || !timeSlots || !Array.isArray(timeSlots)) {
+            return res.status(400).json({ message: "Missing required fields" });
+        }
+
+        // prevent duplicate schedule for same doctor/date
+        const existed = await Schedule.findOne({ doctor_id, date });
+        if (existed) {
+            return res.status(409).json({
+                message: "Schedule already exists for this doctor and date"
+            });
+        }
+
+        const schedule = await Schedule.create({
+            doctor_id,
+            date: new Date(date),
+            timeSlots
+        });
+
+        return res.status(201).json({
+            message: "Schedule created successfully",
+            schedule
+        });
+
+    } catch (error) {
+        return res.status(500).json({ message: "Error creating schedule", error });
+    }
+};
