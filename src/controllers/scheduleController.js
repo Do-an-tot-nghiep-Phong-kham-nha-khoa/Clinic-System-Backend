@@ -34,10 +34,10 @@ module.exports.getDoctorScheduleByDate = async (req, res) => {
 module.exports.getAvailableTimeSlotsBySpecialty = async (req, res) => {
     try {
         const { specialty_id, date } = req.params;
-
+        // console.log('Fetching available slots for specialty:', specialty_id, 'on date:', date);
         // Step 1: find all doctors of this specialty
         const doctors = await Doctor.find({ specialtyId: specialty_id });
-
+        // console.log('Found doctors:', doctors);
         if (doctors.length === 0) {
             return res.status(404).json({ message: "No doctors found for this specialty" });
         }

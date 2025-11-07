@@ -16,6 +16,9 @@ router.get("/:id", doctorController.getDoctorById);
 router.put("/:id", doctorController.updateDoctor);
 
 // Xóa bác sĩ
+
+router.post("/batch", doctorController.getDoctorsByIds);
+
 router.delete("/:id", doctorController.deleteDoctor);
 
 // Tìm kiếm bác sĩ

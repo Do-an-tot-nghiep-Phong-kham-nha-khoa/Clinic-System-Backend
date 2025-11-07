@@ -123,75 +123,64 @@ module.exports.createByDoctor = async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
+
 // [PUT] /appointments/:id/assign-doctor
 module.exports.assignDoctor = async (req, res) => {
   try {
     const { id } = req.params;
-    // defensive: req.body may be undefined
-    const doctor_id = req.body && req.body.doctor_id ? req.body.doctor_id : null;
-
+    const { doctor_id } = req.body;
     if (!doctor_id) {
-      return res.status(400).json({ message: 'doctor_id is required in request body (JSON). Example: { \"doctor_id\": \"<id>\" }' });
+      return res.status(400).json({ message: 'doctor_id is required' });
     }
-
-    // 1) find appointment
+    // ==== 1. Lấy appointment ====
     const appointment = await Appointment.findById(id);
     if (!appointment) {
       return res.status(404).json({ message: 'Appointment not found' });
     }
-
-    // log to help debugging if fields are unexpected
-    console.debug('assignDoctor: appointment fields:', {
-      appointmentDate: appointment.appointmentDate ?? appointment.appointment_date,
-      timeSlot: appointment.timeSlot ?? appointment.time_slot,
-      specialty_id: appointment.specialty_id ?? appointment.specialtyId ?? appointment.specialty
-    });
-
-    // 2) only allow when waiting_assigned
-    if (String(appointment.status) !== 'waiting_assigned') {
-      return res.status(400).json({ message: 'Only appointments with status \"waiting_assigned\" can be assigned' });
+    // ==== 2. Chỉ cho phép phân công nếu đang waiting_assigned ====
+    if (appointment.status !== 'waiting_assigned') {
+      return res.status(400).json({ message: 'Only appointments with status "waiting_assigned" can be assigned' });
     }
-
-    // 3) find doctor
+    // ==== 3. Kiểm tra bác sĩ ====
     const doctor = await Doctor.findById(doctor_id);
     if (!doctor) {
       return res.status(404).json({ message: 'Doctor not found' });
     }
-
-    // match specialty: be tolerant of different field names
-    const apptSpecialty = (appointment.specialty_id ?? appointment.specialtyId ?? appointment.specialty) || null;
-    const docSpecialty = doctor.specialtyId ?? doctor.specialty?._id ?? doctor.specialty;
-    if (!apptSpecialty || !docSpecialty || docSpecialty.toString() !== apptSpecialty.toString()) {
+    // console.log(doctor.specialtyId, appointment.specialty_id);
+    // Bác sĩ phải cùng chuyên khoa với lịch hẹn
+    if (doctor.specialtyId.toString() !== appointment.specialty_id.toString()) {
       return res.status(400).json({ message: 'Doctor specialty does not match appointment specialty' });
-    }
+    }else console.log('Specialty match');
 
-    // 4) find schedule for the date — use appointment.appointmentDate or fallback
-    const apptDateVal = appointment.appointmentDate ?? appointment.appointment_date;
-    if (!apptDateVal) {
-      return res.status(400).json({ message: 'Appointment date is missing or invalid' });
-    }
+    // ==== 4. Tìm schedule của bác sĩ cho ngày đó ====
+    const dateOnly = new Date(appointment.appointmentDate);
+    dateOnly.setHours(0, 0, 0, 0);
+
+    const nextDay = new Date(dateOnly);
+    nextDay.setDate(nextDay.getDate() + 1);
+
     const schedule = await Schedule.findOne({
       doctor_id: doctor._id,
-      date: new Date(apptDateVal),
+      date: { $gte: dateOnly, $lt: nextDay },
     });
+    // console.log('Found schedule:', schedule);
     if (!schedule) {
       return res.status(400).json({ message: 'Doctor has no schedule for this date' });
     }
-
-    // 5) check slot — support appointment.timeSlot or appointment.time_slot
-    const apptSlot = appointment.timeSlot ?? appointment.time_slot;
-    if (!apptSlot) {
-      return res.status(400).json({ message: 'Appointment time slot is missing or invalid' });
-    }
-    const slotIndex = schedule.timeSlots.findIndex(slot => slot.startTime === apptSlot);
-    if (slotIndex === -1) {
-      return res.status(400).json({ message: 'Invalid time slot for this doctor' });
-    }
-    if (schedule.timeSlots[slotIndex].isBooked) {
+     const normalize = t => t.split(" ")[0].split("-")[0].trim().slice(0, 5);
+    const normalizedAppointmentSlot = normalize(appointment.timeSlot);
+    
+    // ==== 5. Kiểm tra slot có trống không ====
+    const slotIndex = schedule.timeSlots.findIndex(
+      slot => normalize(slot.startTime) === normalizedAppointmentSlot
+    );
+    // console.log('Slot index:', slotIndex);
+    console.log(schedule.timeSlots[slotIndex + 1]);
+    if (schedule.timeSlots[slotIndex + 1].isBooked) {
       return res.status(400).json({ message: 'This time slot is already booked by another patient' });
     }
 
-    // 6) commit updates
+    // ==== 6. Cập nhật dữ liệu ====
     appointment.doctor_id = doctor._id;
     appointment.status = 'pending';
     await appointment.save();
@@ -204,13 +193,12 @@ module.exports.assignDoctor = async (req, res) => {
       message: 'Doctor assigned successfully to appointment',
       appointment,
     });
-
   } catch (error) {
-    // Log the full error for diagnosis; return a safe message
     console.error('Error assigning doctor:', error);
-    return res.status(500).json({ message: 'Internal server error', error: error?.message ?? String(error) });
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
+
 
 // [PUT] /appointments/:id/status
 module.exports.updateStatus = async (req, res) => {
