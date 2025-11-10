@@ -96,6 +96,109 @@ module.exports.resetPasswordPost = async (req, res) => {
   return res.status(200).json({ message: "Đặt lại mật khẩu thành công!" });
 };
 
+// ---------------------- CRUD for patients (admin / management) ----------------------
+
+// [POST] /patients/create
+module.exports.createPatient = async (req, res) => {
+  try {
+    const { email, phone, password } = req.body;
+
+    // optional duplicate checks
+    if (email) {
+      const exists = await Patient.findOne({ email });
+      if (exists) return res.status(400).json({ message: 'Email đã tồn tại' });
+    }
+    if (phone) {
+      const exists = await Patient.findOne({ phone });
+      if (exists) return res.status(400).json({ message: 'Số điện thoại đã tồn tại' });
+    }
+
+    if (password) req.body.password = bcrypt.hashSync(password, 10);
+
+    const patient = new Patient(req.body);
+    const saved = await patient.save();
+    return res.status(201).json({ message: 'Tạo bệnh nhân thành công', data: saved });
+  } catch (err) {
+    console.error('Error creating patient:', err);
+    return res.status(500).json({ message: 'Lỗi khi tạo bệnh nhân', error: err.message });
+  }
+};
+
+// [GET] /patients/
+module.exports.getAllPatients = async (req, res) => {
+  try {
+    const { q, status, page = 1, limit = 10 } = req.query;
+    const pageNumber = Math.max(parseInt(page) || 1, 1);
+    const pageSize = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
+
+    const filter = { deleted: false };
+    if (status) filter.status = status;
+    if (q) {
+      const r = new RegExp(q, 'i');
+      filter.$or = [{ name: r }, { email: r }, { phone: r }];
+    }
+
+    const [items, total] = await Promise.all([
+      Patient.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((pageNumber - 1) * pageSize)
+        .limit(pageSize),
+      Patient.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      message: 'Lấy danh sách bệnh nhân thành công',
+      count: items.length,
+      data: items,
+      pagination: {
+        page: pageNumber,
+        pageSize,
+        totalItems: total,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    });
+  } catch (err) {
+    console.error('Error fetching patients:', err);
+    return res.status(500).json({ message: 'Lỗi khi lấy danh sách bệnh nhân', error: err.message });
+  }
+};
+
+// [GET] /patients/:id
+module.exports.getPatientById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) return res.status(400).json({ message: 'Id không hợp lệ' });
+
+    const patient = await Patient.findOne({ _id: id, deleted: false });
+    if (!patient) return res.status(404).json({ message: 'Không tìm thấy bệnh nhân' });
+
+    return res.status(200).json({ message: 'Lấy thông tin bệnh nhân thành công', data: patient });
+  } catch (err) {
+    console.error('Error fetching patient by id:', err);
+    return res.status(500).json({ message: 'Lỗi khi lấy thông tin bệnh nhân', error: err.message });
+  }
+};
+
+
+// [DELETE] /patients/:id  (soft delete)
+module.exports.deletePatient = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) return res.status(400).json({ message: 'Id không hợp lệ' });
+
+    const patient = await Patient.findById(id);
+    if (!patient) return res.status(404).json({ message: 'Không tìm thấy bệnh nhân để xóa' });
+
+    patient.deleted = true;
+    patient.status = 'inactive';
+    await patient.save();
+
+    return res.status(200).json({ message: 'Xóa (soft) bệnh nhân thành công', data: patient });
+  } catch (err) {
+    console.error('Error deleting patient:', err);
+    return res.status(500).json({ message: 'Lỗi khi xóa bệnh nhân', error: err.message });
+  }
+};
 // [GET] /patients/account/:accountId
 module.exports.getByAccountId = async (req, res) => {
   try {

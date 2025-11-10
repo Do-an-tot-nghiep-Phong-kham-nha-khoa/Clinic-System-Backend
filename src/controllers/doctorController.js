@@ -63,6 +63,7 @@ class DoctorController {
   }
 
   // Lấy danh sách bác sĩ (lọc theo chuyên khoa, phân trang)
+  // [GET] /doctors
   async getAllDoctors(req, res) {
     try {
       const { specialtyId, name, page = 1, limit = 10 } = req.query;
@@ -126,7 +127,22 @@ class DoctorController {
       });
     }
   }
+  async getDoctorsByIds(req, res) {
+  try {
+    const { ids } = req.body;  // matches frontend
+    if (!ids || !Array.isArray(ids)) {
+      return res.status(400).json({ message: "ids phải là mảng" });
+    }
 
+    const doctors = await Doctor.find({ _id: { $in: ids } })
+      .populate("specialtyId", "name")
+      .populate("accountId", "email status");
+
+    res.status(200).json({ message: "Lấy danh sách bác sĩ thành công", data: doctors });
+  } catch (err) {
+    res.status(500).json({ message: "Lỗi khi lấy danh sách bác sĩ", error: err.message });
+  }
+}
   // Cập nhật thông tin bác sĩ
   async updateDoctor(req, res) {
     try {
