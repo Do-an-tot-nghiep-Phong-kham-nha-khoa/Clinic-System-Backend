@@ -4,6 +4,9 @@ const Invoice = require('../models/invoice');
 const Prescription = require('../models/prescription');
 const LabOrder = require('../models/labOrder');
 const { getPagingParams, buildMeta, buildSearchFilter } = require('../helpers/query');
+const HealthProfile = require('../models/healthProfile');
+const Patient = require('../models/patient');
+const FamilyMember = require('../models/familyMember');
 
 // GET /api/invoices
 exports.list = async (req, res) => {
@@ -16,7 +19,7 @@ exports.list = async (req, res) => {
         const conditions = {
             // Tìm kiếm theo _id, patientId, created_at
             ...(query.id && mongoose.isValidObjectId(query.id) && /^[0-9a-fA-F]{24}$/.test(query.id) && { _id: new mongoose.Types.ObjectId(query.id) }),
-            ...(query.patientId && mongoose.isValidObjectId(query.patientId) && { patientId: new mongoose.Types.ObjectId(query.patientId) }),
+            ...(query.healthProfile_id && mongoose.isValidObjectId(query.healthProfile_id) && { healthProfile_id: new mongoose.Types.ObjectId(query.healthProfile_id) }),
             ...(query.dateFrom || query.dateTo ? {
                 created_at: {
                     ...(query.dateFrom && { $gte: new Date(query.dateFrom) }),
@@ -32,7 +35,7 @@ exports.list = async (req, res) => {
             // 2. **Populate các trường liên quan**
             .populate({
                 path: 'prescriptionId',
-                select: 'created_at totalPrice items patientId',
+                select: 'totalPrice items',
                 populate: {
                     path: 'items',
                     select: 'quantity medicineId',
@@ -45,7 +48,7 @@ exports.list = async (req, res) => {
             })
             .populate({
                 path: 'labOrderId',
-                select: 'testTime totalPrice items patientId',
+                select: 'totalPrice items',
                 populate: {
                     path: 'items',
                     select: 'quantity serviceId',
@@ -56,7 +59,11 @@ exports.list = async (req, res) => {
                     }
                 }
             })
-            .populate('patientId', 'name phone')
+            .populate({
+                path: 'healthProfile_id',
+                model: 'HealthProfile',
+                select: 'ownerId ownerModel'
+            })
             .lean(); // Luôn sử dụng .lean() để tăng hiệu suất
 
         const searchFields = ['_id', 'status']; // Có thể thêm các trường khác của Invoice
@@ -81,49 +88,56 @@ exports.list = async (req, res) => {
             Invoice.countDocuments(conditions)
         ]);
 
-        // 5. Transform response to match desired format
-        const transformedData = data.map(invoice => ({
-            _id: invoice._id,
-            created_at: invoice.created_at,
-            totalPrice: Number(invoice.totalPrice) || 0,
-            status: invoice.status,
+        // Resolve owner details in parallel for performance
+        const resolved = await Promise.all(data.map(async (lo) => {
+            const hp = lo.healthProfile_id;
+            let owner_detail = null;
 
-            patient: invoice.patientId ? {
-                name: invoice.patientId.name,
-                phone: invoice.patientId.phone,
-            } : null,
-            // Giữ lại patientId gốc (chỉ ID) nếu cần
-            patientId: invoice.patientId ? invoice.patientId._id : null,
+            if (hp && hp.ownerId && hp.ownerModel) {
+                // choose model
+                if (hp.ownerModel === 'Patient') {
+                    const p = await Patient.findById(hp.ownerId).select('name dob phone gender').lean();
+                    if (p) owner_detail = { name: p.name, dob: p.dob, phone: p.phone, gender: p.gender };
+                } else if (hp.ownerModel === 'FamilyMember') {
+                    const fm = await FamilyMember.findById(hp.ownerId).select('name dob phone gender').lean();
+                    if (fm) owner_detail = { name: fm.name, dob: fm.dob, phone: fm.phone, gender: fm.gender };
+                }
+            }
 
-            // Format Prescription data
-            prescription: invoice.prescriptionId ? {
-                _id: invoice.prescriptionId._id,
-                created_at: invoice.prescriptionId.created_at,
-                totalPrice: Number(invoice.prescriptionId.totalPrice) || 0,
-                patientId: invoice.prescriptionId.patientId,
-                items: Array.isArray(invoice.prescriptionId.items) ? invoice.prescriptionId.items.map(item => ({
-                    _id: item._id,
-                    medicineId: item.medicineId ? item.medicineId._id : null,
-                    medicine: item.medicineId,
-                })) : []
-            } : null,
+            return {
+                _id: lo._id,
+                created_at: lo.created_at,
+                totalPrice: Number(lo.totalPrice) || 0,
+                status: lo.status,
+                healthProfile_id: hp?._id || null,
+                owner_detail,
 
-            // Format LabOrder data
-            labOrder: invoice.labOrderId ? {
-                _id: invoice.labOrderId._id,
-                testTime: invoice.labOrderId.testTime,
-                totalPrice: Number(invoice.labOrderId.totalPrice) || 0,
-                patientId: invoice.labOrderId.patientId,
-                items: Array.isArray(invoice.labOrderId.items) ? invoice.labOrderId.items.map(item => ({
-                    _id: item._id,
-                    quantity: item.quantity,
-                    serviceId: item.serviceId ? item.serviceId._id : null,
-                    service: item.serviceId,
-                })) : []
-            } : null,
+                // Format Prescription data
+                prescription: lo.prescriptionId ? {
+                    _id: lo.prescriptionId._id,
+                    totalPrice: Number(lo.prescriptionId.totalPrice) || 0,
+                    items: Array.isArray(lo.prescriptionId.items) ? lo.prescriptionId.items.map(item => ({
+                        _id: item._id,
+                        medicineId: item.medicineId ? item.medicineId._id : null,
+                        medicine: item.medicineId,
+                    })) : []
+                } : null,
+
+                // Format LabOrder data
+                labOrder: lo.labOrderId ? {
+                    _id: lo.labOrderId._id,
+                    totalPrice: Number(lo.labOrderId.totalPrice) || 0,
+                    items: Array.isArray(lo.labOrderId.items) ? lo.labOrderId.items.map(item => ({
+                        _id: item._id,
+                        quantity: item.quantity,
+                        serviceId: item.serviceId ? item.serviceId._id : null,
+                        service: item.serviceId,
+                    })) : []
+                } : null,
+            };
         }));
 
-        res.json({ data: transformedData, meta: buildMeta(total, paging.page, paging.limit) });
+        res.json({ data: resolved, meta: buildMeta(total, paging.page, paging.limit) });
     } catch (error) {
         console.error("Error fetching invoices:", error);
         res.status(500).json({ message: error.message });
@@ -132,14 +146,12 @@ exports.list = async (req, res) => {
 
 // POST /api/invoices
 exports.create = async (req, res) => {
-    const patientIdFromReq = req.body.patientId ? String(req.body.patientId) : null;
-
     try {
-        const { created_at = new Date().toISOString(), status = 'Pending', patientId, prescriptionId, labOrderId } = req.body;
+        const { created_at = new Date().toISOString(), status = 'Pending', healthProfile_id, prescriptionId, labOrderId } = req.body;
 
         // 1. Kiểm tra tính hợp lệ ban đầu
-        if (!patientId || !mongoose.isValidObjectId(patientId)) {
-            return res.status(400).json({ message: 'Valid patientId is required' });
+        if (!healthProfile_id || !mongoose.isValidObjectId(healthProfile_id)) {
+            return res.status(400).json({ message: 'Valid healthProfile_id is required' });
         }
         if (prescriptionId && !mongoose.isValidObjectId(prescriptionId)) {
             return res.status(400).json({ message: `Invalid prescriptionId: ${prescriptionId}` });
@@ -154,46 +166,28 @@ exports.create = async (req, res) => {
         let prescriptionTotalPrice = 0;
         let labOrderTotalPrice = 0;
 
-        // 2. Kiểm tra Prescription và Patient ID
+        // 2. Kiểm tra Prescription và health profile ID
         if (prescriptionId) {
-            // Lấy cả totalPrice và patientId từ Prescription
-            const prescription = await Prescription.findById(prescriptionId).select('totalPrice patientId').lean();
-            if (!prescription) {
+            const prescription = await Prescription.findById(prescriptionId).select('totalPrice healthProfile_id').lean();
+            if (!prescription)
                 return res.status(400).json({ message: `Prescription not found: ${prescriptionId}` });
-            }
 
-            // So sánh Patient ID
-            if (String(prescription.patientId) !== patientIdFromReq) {
-                return res.status(400).json({
-                    message: `Patient ID mismatch: Prescription ${prescriptionId} belongs to patient ${prescription.patientId}, not ${patientIdFromReq}`
-                });
-            }
+            if (String(prescription.healthProfile_id) !== String(healthProfile_id))
+                return res.status(400).json({ message: `healthProfile_id mismatch between invoice and prescription` });
 
             prescriptionTotalPrice = Number(prescription.totalPrice) || 0;
-            if (isNaN(prescriptionTotalPrice) || prescriptionTotalPrice < 0) {
-                return res.status(400).json({ message: `Invalid totalPrice for prescription: ${prescriptionId}` });
-            }
         }
 
-        // 3. Kiểm tra LabOrder và Patient ID
+        // 3. Kiểm tra LabOrder và health profile ID
         if (labOrderId) {
-            // Lấy cả totalPrice và patientId từ LabOrder
-            const labOrder = await LabOrder.findById(labOrderId).select('totalPrice patientId').lean();
-            if (!labOrder) {
+            const labOrder = await LabOrder.findById(labOrderId).select('totalPrice healthProfile_id').lean();
+            if (!labOrder)
                 return res.status(400).json({ message: `LabOrder not found: ${labOrderId}` });
-            }
 
-            // So sánh Patient ID
-            if (String(labOrder.patientId) !== patientIdFromReq) {
-                return res.status(400).json({
-                    message: `Patient ID mismatch: LabOrder ${labOrderId} belongs to patient ${labOrder.patientId}, not ${patientIdFromReq}`
-                });
-            }
+            if (String(labOrder.healthProfile_id) !== String(healthProfile_id))
+                return res.status(400).json({ message: `healthProfile_id mismatch between invoice and labOrder` });
 
             labOrderTotalPrice = Number(labOrder.totalPrice) || 0;
-            if (isNaN(labOrderTotalPrice) || labOrderTotalPrice < 0) {
-                return res.status(400).json({ message: `Invalid totalPrice for labOrder: ${labOrderId}` });
-            }
         }
 
         // 4. Tạo Invoice
@@ -203,7 +197,7 @@ exports.create = async (req, res) => {
         const invoice = new Invoice({
             totalPrice,
             status,
-            patientId,
+            healthProfile_id,
             created_at: new Date(created_at),
             prescriptionId: prescriptionId || null,
             labOrderId: labOrderId || null,
@@ -211,238 +205,108 @@ exports.create = async (req, res) => {
         await invoice.save();
 
         // 5. Populate và trả về kết quả
-        // Giữ nguyên phần populate và response để đảm bảo đầu ra không thay đổi
         const result = await Invoice.findById(invoice._id)
-            .populate({ path: 'prescriptionId', populate: { path: 'items', populate: { path: 'medicineId', model: 'Medicine', select: 'name description price manufacturer' } } })
-            .populate({ path: 'labOrderId', populate: { path: 'items', populate: { path: 'serviceId', model: 'Service', select: 'name description price' } } })
+            .populate({
+                path: 'prescriptionId',
+                populate: {
+                    path: 'items',
+                    populate: { path: 'medicineId', model: 'Medicine', select: 'name description price manufacturer' }
+                }
+            })
+            .populate({
+                path: 'labOrderId',
+                populate: {
+                    path: 'items',
+                    populate: { path: 'serviceId', model: 'Service', select: 'name description price' }
+                }
+            })
             .lean();
 
-        const response = {
-            _id: result._id,
-            created_at: result.created_at,
-            totalPrice: result.totalPrice,
-            status: result.status,
-            patientId: result.patientId,
-            prescription: result.prescriptionId && result.prescriptionId.items
-                ? {
-                    _id: result.prescriptionId._id,
-                    created_at: result.prescriptionId.created_at,
-                    totalPrice: result.prescriptionId.totalPrice,
-                    items: result.prescriptionId.items.map((item) => ({
-                        _id: item._id,
-                        quantity: item.quantity,
-                        dosage: item.dosage,
-                        frequency: item.frequency,
-                        duration: item.duration,
-                        instruction: item.instruction,
-                        medicineId: item.medicineId ? item.medicineId._id : null,
-                        prescriptionId: item.prescriptionId,
-                        medicine: item.medicineId,
-                    })),
-                }
-                : null,
-            labOrder: result.labOrderId && result.labOrderId.items
-                ? {
-                    _id: result.labOrderId._id,
-                    testTime: result.labOrderId.testTime,
-                    totalPrice: result.labOrderId.totalPrice,
-                    items: result.labOrderId.items.map((item) => ({
-                        _id: item._id,
-                        quantity: item.quantity,
-                        description: item.description,
-                        serviceId: item.serviceId ? item.serviceId._id : null,
-                        labOrderId: item.labOrderId,
-                        service: item.serviceId,
-                    })),
-                }
-                : null,
-        };
-
-        res.status(201).json(response);
+        res.status(201).json(result);
     } catch (error) {
         // Xử lý lỗi Mongoose, v.v.
         res.status(400).json({ message: error.message });
     }
 };
 
-// GET /api/invoices/patient?patientId=
-exports.getByPatient = async (req, res) => {
-    try {
-        const { patientId } = req.query;
-
-        // 1. Kiểm tra tính hợp lệ của patientId
-        if (!patientId || !mongoose.isValidObjectId(patientId)) {
-            return res.status(400).json({ message: 'Valid patientId is required' });
-        }
-
-        const patientObjectId = new mongoose.Types.ObjectId(patientId);
-
-        // 2. Truy vấn Invoice dựa trên patientId và populate chi tiết
-        const invoices = await Invoice.find({ patientId: patientObjectId })
-            .sort({ created_at: -1 }) // Sắp xếp theo ngày tạo mới nhất lên trước
-            .populate('patientId', 'name phone dob address gender') // Thông tin bệnh nhân
-            .populate({
-                path: 'prescriptionId',
-                select: 'created_at totalPrice items patientId',
-                populate: {
-                    path: 'items',
-                    select: 'quantity medicineId',
-                    populate: {
-                        path: 'medicineId',
-                        model: 'Medicine',
-                        select: 'name price'
-                    }
-                }
-            })
-            .populate({
-                path: 'labOrderId',
-                select: 'testTime totalPrice items patientId',
-                populate: {
-                    path: 'items',
-                    select: 'quantity serviceId',
-                    populate: {
-                        path: 'serviceId',
-                        model: 'Service',
-                        select: 'name price'
-                    }
-                }
-            })
-            .lean();
-
-        // 3. Format dữ liệu trả về
-        const transformedData = invoices.map(invoice => ({
-            _id: invoice._id,
-            created_at: invoice.created_at,
-            totalPrice: Number(invoice.totalPrice) || 0,
-            status: invoice.status,
-
-            // Thông tin bệnh nhân đã populate
-            patient: invoice.patientId ? {
-                _id: invoice.patientId._id,
-                name: invoice.patientId.name,
-                phone: invoice.patientId.phone,
-            } : null,
-            patientId: invoice.patientId ? invoice.patientId._id : null,
-
-            // Chi tiết Prescription
-            prescription: invoice.prescriptionId ? {
-                _id: invoice.prescriptionId._id,
-                created_at: invoice.prescriptionId.created_at,
-                totalPrice: Number(invoice.prescriptionId.totalPrice) || 0,
-                items: Array.isArray(invoice.prescriptionId.items) ? invoice.prescriptionId.items.map(item => ({
-                    _id: item._id, medicineId: item.medicineId ? item.medicineId._id : null, medicine: item.medicineId,
-                })) : []
-            } : null,
-
-            // Chi tiết LabOrder
-            labOrder: invoice.labOrderId ? {
-                _id: invoice.labOrderId._id, testTime: invoice.labOrderId.testTime, totalPrice: Number(invoice.labOrderId.totalPrice) || 0,
-                items: Array.isArray(invoice.labOrderId.items) ? invoice.labOrderId.items.map(item => ({
-                    _id: item._id, quantity: item.quantity, serviceId: item.serviceId ? item.serviceId._id : null, service: item.serviceId,
-                })) : []
-            } : null,
-        }));
-
-        res.json({ data: transformedData });
-
-    } catch (error) {
-        console.error("Error fetching invoices by patient ID:", error);
-        res.status(500).json({ message: error.message });
-    }
-};
-
 // GET /api/invoices/:id
 exports.getById = async (req, res) => {
     try {
-        // Lấy ID hóa đơn từ URL params (giả sử route là /invoices/:id)
         const invoiceId = req.params.id;
-
-        // 1. Kiểm tra tính hợp lệ của Invoice ID
         if (!invoiceId || !mongoose.isValidObjectId(invoiceId)) {
             return res.status(400).json({ message: 'Valid Invoice ID is required' });
         }
 
         const invoice = await Invoice.findById(invoiceId)
-            // Populate Patient (thông tin cơ bản)
-            .populate('patientId', 'name phone dob address gender')
-            // Populate Prescription
             .populate({
                 path: 'prescriptionId',
-                select: 'created_at totalPrice items patientId',
+                select: 'totalPrice items',
                 populate: {
                     path: 'items',
                     select: 'quantity medicineId',
-                    populate: {
-                        path: 'medicineId',
-                        model: 'Medicine',
-                        select: 'name price'
-                    }
+                    populate: { path: 'medicineId', model: 'Medicine', select: 'name price' }
                 }
             })
-            // Populate LabOrder
             .populate({
                 path: 'labOrderId',
-                select: 'testTime totalPrice items patientId',
+                select: 'totalPrice items',
                 populate: {
                     path: 'items',
                     select: 'quantity serviceId',
-                    populate: {
-                        path: 'serviceId',
-                        model: 'Service',
-                        select: 'name price'
-                    }
+                    populate: { path: 'serviceId', model: 'Service', select: 'name price' }
                 }
             })
+            .populate({ path: 'healthProfile_id', model: 'HealthProfile', select: 'ownerId ownerModel' })
             .lean();
 
-        // 2. Kiểm tra nếu không tìm thấy hóa đơn
         if (!invoice) {
             return res.status(404).json({ message: `Invoice not found with ID: ${invoiceId}` });
         }
 
-        // 3. Format dữ liệu trả về (tương tự như hàm list)
+        // Resolve owner_detail like list
+        let owner_detail = null;
+        const hp = invoice.healthProfile_id;
+        if (hp && hp.ownerId && hp.ownerModel) {
+            if (hp.ownerModel === 'Patient') {
+                const p = await Patient.findById(hp.ownerId).select('name dob phone gender').lean();
+                if (p) owner_detail = { name: p.name, dob: p.dob, phone: p.phone, gender: p.gender };
+            } else if (hp.ownerModel === 'FamilyMember') {
+                const fm = await FamilyMember.findById(hp.ownerId).select('name dob phone gender').lean();
+                if (fm) owner_detail = { name: fm.name, dob: fm.dob, phone: fm.phone, gender: fm.gender };
+            }
+        }
+
         const response = {
             _id: invoice._id,
             created_at: invoice.created_at,
             totalPrice: Number(invoice.totalPrice) || 0,
             status: invoice.status,
-
-            // Thông tin bệnh nhân đã populate
-            patient: invoice.patientId ? {
-                _id: invoice.patientId._id,
-                name: invoice.patientId.name,
-                phone: invoice.patientId.phone,
-                dob: invoice.patientId.dob,
-                address: invoice.patientId.address,
-                gender: invoice.patientId.gender,
-            } : null,
-            patientId: invoice.patientId ? invoice.patientId._id : null,
-
-            // Chi tiết Prescription
+            healthProfile_id: hp?._id || null,
+            owner_detail,
             prescription: invoice.prescriptionId ? {
                 _id: invoice.prescriptionId._id,
-                created_at: invoice.prescriptionId.created_at,
                 totalPrice: Number(invoice.prescriptionId.totalPrice) || 0,
-                patientId: invoice.prescriptionId.patientId,
                 items: Array.isArray(invoice.prescriptionId.items) ? invoice.prescriptionId.items.map(item => ({
-                    _id: item._id, quantity: item.quantity, medicineId: item.medicineId ? item.medicineId._id : null, medicine: item.medicineId,
+                    _id: item._id,
+                    medicineId: item.medicineId ? item.medicineId._id : null,
+                    medicine: item.medicineId,
                 })) : []
             } : null,
-
-            // Chi tiết LabOrder
             labOrder: invoice.labOrderId ? {
-                _id: invoice.labOrderId._id, testTime: invoice.labOrderId.testTime, totalPrice: Number(invoice.labOrderId.totalPrice) || 0,
-                patientId: invoice.labOrderId.patientId,
+                _id: invoice.labOrderId._id,
+                totalPrice: Number(invoice.labOrderId.totalPrice) || 0,
                 items: Array.isArray(invoice.labOrderId.items) ? invoice.labOrderId.items.map(item => ({
-                    _id: item._id, quantity: item.quantity, serviceId: item.serviceId ? item.serviceId._id : null, service: item.serviceId,
+                    _id: item._id,
+                    quantity: item.quantity,
+                    serviceId: item.serviceId ? item.serviceId._id : null,
+                    service: item.serviceId,
                 })) : []
             } : null,
         };
 
         res.json(response);
-
     } catch (error) {
-        console.error("Error fetching invoice by ID:", error);
+        console.error('Error fetching invoice by ID:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -472,7 +336,6 @@ exports.updateStatus = async (req, res) => {
             { status: status },
             { new: true, runValidators: true } // {new: true} trả về tài liệu sau khi update
         )
-            .populate('patientId', 'name phone dob address gender') // Populate chi tiết patient cho response
             .lean();
 
         // 4. Kiểm tra nếu không tìm thấy hóa đơn
@@ -486,15 +349,9 @@ exports.updateStatus = async (req, res) => {
             created_at: updatedInvoice.created_at,
             totalPrice: Number(updatedInvoice.totalPrice) || 0,
             status: updatedInvoice.status,
-            patientId: updatedInvoice.patientId ? updatedInvoice.patientId._id : null,
-            patient: updatedInvoice.patientId ? {
-                _id: updatedInvoice.patientId._id,
-                name: updatedInvoice.patientId.name,
-                phone: updatedInvoice.patientId.phone,
-                // ... (Các trường khác của patient)
-            } : null,
             prescriptionId: updatedInvoice.prescriptionId || null,
             labOrderId: updatedInvoice.labOrderId || null,
+            healthProfile_id: updatedInvoice.healthProfile_id || null,
         };
 
         res.json(response);

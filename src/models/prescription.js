@@ -9,10 +9,10 @@ const prescriptionSchema = new mongoose.Schema({
         type: Number,
         required: false
     },
-    patientId: {
+    healthProfile_id: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Patient',
-        required: false
+        ref: 'HealthProfile',
+        required: true
     },
     items: [{
         medicineId: {

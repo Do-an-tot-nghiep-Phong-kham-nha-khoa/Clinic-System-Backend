@@ -1,9 +1,9 @@
 const mongoose = require("mongoose");
 
 const treatmentSchema = new mongoose.Schema({
-    patient: {
+    healthProfile: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Patient',
+        ref: 'HealthProfile',
         required: true
     },
     doctor: {
@@ -17,15 +17,18 @@ const treatmentSchema = new mongoose.Schema({
     },
     treatmentDate: { type: Date, required: true },
     diagnosis: { type: String, required: true },
-    laborder: { 
-        type: mongoose.Schema.Types.ObjectId, 
-        ref: 'LabOrder',
-        required: true
+    laborder: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'LabOrder'
     },
-    prescription: [{
+    prescription: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Prescription'
-    }],
+    },
+    bloodPressure: { type: String },
+    heartRate: { type: Number },
+    temperature: { type: Number },
+    symptoms: { type: String },
     totalCost: { type: Number, required: true },
 }, {
     timestamps: true

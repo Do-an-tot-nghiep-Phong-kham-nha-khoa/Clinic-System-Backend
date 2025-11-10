@@ -3,6 +3,9 @@ const mongoose = require('mongoose');
 const Prescription = require('../models/prescription');
 const Medicine = require('../models/medicine');
 const { getPagingParams, buildPipelineStages, buildMeta, buildSearchFilter } = require('../helpers/query');
+const HealthProfile = require('../models/healthProfile');
+const Patient = require('../models/patient');
+const FamilyMember = require('../models/familyMember');
 
 // GET /api/prescriptions
 exports.list = async (req, res) => {
@@ -13,7 +16,7 @@ exports.list = async (req, res) => {
         // Build basic filter conditions
         const conditions = {
             ...(query.id && mongoose.isValidObjectId(query.id) && { _id: new mongoose.Types.ObjectId(query.id) }),
-            ...(query.patientId && mongoose.isValidObjectId(query.patientId) && { patientId: new mongoose.Types.ObjectId(query.patientId) }),
+            ...(query.healthProfile_id && mongoose.isValidObjectId(query.healthProfile_id) && { healthProfile_id: new mongoose.Types.ObjectId(query.healthProfile_id) }),
             ...(query.dateFrom || query.dateTo ? {
                 createAt: {
                     ...(query.dateFrom && { $gte: new Date(query.dateFrom) }),
@@ -54,7 +57,11 @@ exports.list = async (req, res) => {
             .populate({
                 path: 'items.medicineId',
                 model: 'Medicine',
-                select: 'name price quantity dosageForm manufacturer unit expiryDate'
+                select: 'name price manufacturer unit expiryDate'
+            })
+            .populate({
+                path: 'healthProfile_id',
+                select: 'ownerId ownerModel'
             })
             .sort(paging.sort)
             .skip((paging.page - 1) * paging.limit)
@@ -66,11 +73,33 @@ exports.list = async (req, res) => {
             Prescription.countDocuments(conditions)
         ]);
 
+        // resolve owner detail
+        for (let prescription of data) {
+            if (prescription.healthProfile_id?.ownerModel === "Patient") {
+                const p = await Patient.findById(prescription.healthProfile_id.ownerId).lean();
+                prescription.owner_detail = p ? {
+                    name: p.name,
+                    gender: p.gender,
+                    dob: p.dob,
+                    phone: p.phone
+                } : null;
+            } else if (prescription.healthProfile_id?.ownerModel === "FamilyMember") {
+                const fm = await FamilyMember.findById(prescription.healthProfile_id.ownerId).lean();
+                prescription.owner_detail = fm ? {
+                    name: fm.name,
+                    gender: fm.gender,
+                    dob: fm.dob,
+                    phone: fm.phone
+                } : null;
+            }
+        }
+
         // Format the response
         const formatted = data.map(prescription => ({
             id: prescription._id,
             createAt: prescription.createAt,
-            patientId: prescription.patientId || null,
+            healthProfile_id: prescription.healthProfile_id?._id || null,
+            owner_detail: prescription.owner_detail || null,
             totalPrice: prescription.totalPrice || 0,
             items: (prescription.items || []).map(item => ({
                 quantity: item.quantity,
@@ -83,12 +112,9 @@ exports.list = async (req, res) => {
                     _id: item.medicineId._id,
                     name: item.medicineId.name,
                     price: item.medicineId.price,
-                    quantity: item.medicineId.quantity,
-                    dosageForm: item.medicineId.dosageForm,
                     manufacturer: item.medicineId.manufacturer,
                     unit: item.medicineId.unit,
                     expiryDate: item.medicineId.expiryDate,
-                    __v: item.medicineId.__v || 0
                 } : null
             }))
         }));
@@ -106,7 +132,7 @@ exports.create = async (req, res) => {
     session.startTransaction();
 
     try {
-        const { createAt = new Date().toISOString(), patientId, items } = req.body;
+        const { createAt = new Date().toISOString(), healthProfile_id, items } = req.body;
 
         // Validation: Check if items array is valid
         if (!Array.isArray(items) || items.length === 0) {
@@ -115,11 +141,19 @@ exports.create = async (req, res) => {
             return res.status(400).json({ message: 'Items (medicines) are required' });
         }
 
-        // Validate patientId
-        if (!mongoose.isValidObjectId(patientId)) {
+        // validate healthProfile_id
+        if (!mongoose.isValidObjectId(healthProfile_id)) {
             await session.abortTransaction();
             session.endSession();
-            return res.status(400).json({ message: `Invalid patientId: ${patientId}` });
+            return res.status(400).json({ message: `Invalid healthProfile_id: ${healthProfile_id}` });
+        }
+
+        // check healthProfile tồn tại
+        const hp = await HealthProfile.findById(healthProfile_id).session(session);
+        if (!hp) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ message: 'Health Profile not found' });
         }
 
         // Validate each item
@@ -186,7 +220,7 @@ exports.create = async (req, res) => {
         // Create and save the Prescription with embedded items
         const prescription = new Prescription({
             createAt,
-            patientId,
+            healthProfile_id,
             totalPrice,
             items: formattedItems
         });
@@ -209,14 +243,14 @@ exports.create = async (req, res) => {
 
         // Populate the embedded items' medicineId
         const result = await Prescription.findById(prescription._id)
-            .populate('items.medicineId', 'name price quantity dosageForm manufacturer unit expiryDate')
+            .populate('items.medicineId', 'name price manufacturer unit expiryDate')
             .lean();
 
         // Format the response
         const formattedResult = {
             id: result._id,
             createAt: result.createAt,
-            patientId: result.patientId,
+            healthProfile_id: result.healthProfile_id,
             totalPrice: result.totalPrice,
             items: (result.items || []).map((item) => ({
                 quantity: item.quantity,
@@ -229,12 +263,9 @@ exports.create = async (req, res) => {
                     _id: item.medicineId._id,
                     name: item.medicineId.name,
                     price: item.medicineId.price,
-                    quantity: item.medicineId.quantity,
-                    dosageForm: item.medicineId.dosageForm,
                     manufacturer: item.medicineId.manufacturer,
                     unit: item.medicineId.unit,
                     expiryDate: item.medicineId.expiryDate,
-                    __v: item.medicineId.__v || 0
                 } : null
             }))
         };

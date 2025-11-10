@@ -15,9 +15,9 @@ const invoiceSchema = new mongoose.Schema({
         default: 'Pending',
         required: true
     },
-    patientId: {
+    healthProfile_id: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Patient',
+        ref: 'HealthProfile',
         required: true
     },
     prescriptionId: {
