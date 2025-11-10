@@ -208,3 +208,67 @@ module.exports.resetPasswordPost = async (req, res) => {
     return res.status(500).json({ message: "Không thể đặt lại mật khẩu!" });
   }
 };
+
+// [GET] /accounts
+module.exports.getAccounts = async (req, res) => {
+  try {
+    const accounts = await Account.find({ deleted: false }).populate('roleId', 'name');
+    return res.status(200).json({ accounts });
+  } catch (error) {
+    return res.status(500).json({ message: "Không thể lấy danh sách tài khoản!" });
+  }
+};
+// [GET] /accounts/{id}
+module.exports.getAccountById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const account = await Account.findOne({ _id: id, deleted: false }).populate('roleId', 'name');
+    if (!account) return res.status(404).json({ message: "Tài khoản không tồn tại!" });
+    return res.status(200).json({ account });
+  } catch (error) {
+    return res.status(500).json({ message: "Không thể lấy thông tin tài khoản!" });
+  }
+};
+// [PUT] /accounts/{id}
+module.exports.updateAccount = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email, roleId, status } = req.body;
+    const updatedAccount = await Account.findOneAndUpdate(
+      { _id: id, deleted: false },
+      { email, roleId, status },
+      { new: true }
+    );
+    if (!updatedAccount) return res.status(404).json({ message: "Tài khoản không tồn tại!" });
+    return res.status(200).json({ message: "Cập nhật tài khoản thành công!", account: updatedAccount });
+  } catch (error) {
+    return res.status(500).json({ message: "Không thể cập nhật tài khoản!" });
+  }
+};
+// [DELETE] /accounts/{id}
+module.exports.deleteAccount = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deletedAccount = await Account.findOneAndUpdate(
+      { _id: id, deleted: false },
+      { deleted: true },
+      { new: true }
+    );
+    if (!deletedAccount) return res.status(404).json({ message: "Tài khoản không tồn tại!" });
+    return res.status(200).json({ message: "Xóa tài khoản thành công!", account: deletedAccount });
+  } catch (error) {
+    return res.status(500).json({ message: "Không thể xóa tài khoản!" });
+  }
+};
+
+// [GET] /accounts/role/{role_id}
+module.exports.getRole = async (req, res) => {
+  try {
+    const { role_id } = req.params;
+    const role = await Role.findById(role_id);
+    if (!role) return res.status(404).json({ message: "Vai trò không tồn tại!" });
+    return res.status(200).json({ role });
+  } catch (error) {
+    return res.status(500).json({ message: "Không thể lấy danh sách vai trò!" });
+  }
+};

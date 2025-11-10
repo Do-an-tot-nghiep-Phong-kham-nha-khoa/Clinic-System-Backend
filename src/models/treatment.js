@@ -24,7 +24,7 @@ const treatmentSchema = new mongoose.Schema({
     },
     prescription: [{
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Prescription'
+        ref: 'Prescription',
     }],
     totalCost: { type: Number, required: true },
 }, {
