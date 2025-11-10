@@ -8,14 +8,7 @@ const roleSchema = new mongoose.Schema({
         required: true
     }, // ví dụ: 'doctor', 'patient', 'admin'
     description: String,
-    permissions: [
-        {module: String, actions: [String]}
-    ],
-    deleted: {
-        type: Boolean,
-        default: false
-    },
-    deletedAt: Date
+    permissions: [String] // liệt kê các quyền cụ thể: ['create_appointment', 'view_patient', 'manage_doctor']
 }, { timestamps: true });
 
 module.exports = mongoose.model('Role', roleSchema);
