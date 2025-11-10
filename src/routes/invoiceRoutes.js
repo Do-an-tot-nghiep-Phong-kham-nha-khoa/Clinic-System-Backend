@@ -5,7 +5,6 @@ const controller = require('../controllers/invoiceController');
 // Thin routing only
 router.get('/', controller.list);
 router.post('/', controller.create);
-router.get('/patient', controller.getByPatient);
 router.get('/:id', controller.getById);
 router.patch('/:id/status', controller.updateStatus);
 

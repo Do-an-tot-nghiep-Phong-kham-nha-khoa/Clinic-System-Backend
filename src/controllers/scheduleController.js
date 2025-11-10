@@ -72,7 +72,41 @@ module.exports.getAvailableTimeSlotsBySpecialty = async (req, res) => {
             })
         });
 
-        res.status(200).json(result);
+        const merged = {};
+
+        // merge slots with same time range
+        result.forEach(r => {
+            const key = r.startTime + "-" + r.endTime;
+            if (!merged[key]) {
+                merged[key] = {
+                    startTime: r.startTime,
+                    endTime: r.endTime,
+                    doctor_ids: []
+                }
+            }
+            merged[key].doctor_ids.push(r.doctor_id.toString());
+        });
+
+        // Optional: sort theo startTime
+        const sorted = Object.values(merged).sort((a, b) => {
+            return Number(a.startTime.replace(':', '')) - Number(b.startTime.replace(':', ''));
+        });
+
+        const shift = req.query.shift;
+        // morning: < 12:00, afternoon >= 12:00
+
+        const isMorning = (time) => Number(time.split(':')[0]) < 12;
+
+        let final = sorted;
+
+        if (shift === 'morning') {
+            final = sorted.filter(r => isMorning(r.startTime));
+        }
+        if (shift === 'afternoon') {
+            final = sorted.filter(r => !isMorning(r.startTime));
+        }
+
+        return res.status(200).json(final);
 
     } catch (error) {
         console.error("Error fetching available slots:", error);

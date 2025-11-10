@@ -2,88 +2,99 @@ const Treatment = require("../models/treatment");
 const Doctor = require("../models/doctor");
 const Patient = require("../models/patient");
 const Appointment = require("../models/appointment");
+const FamilyMember = require("../models/familyMember");
+const LabOrder = require("../models/labOrder");
+const Prescription = require("../models/prescription");
+const HealthProfile = require("../models/healthProfile");
 
 class TreatmentController {
   // Tạo hồ sơ điều trị mới
   async createTreatment(req, res) {
     try {
       const {
-        patient,
+        healthProfile,
         doctor,
         appointment,
         treatmentDate,
-        treatmentType,
         diagnosis,
-        treatment,
-        medications,
-        totalCost,
-        patientReaction
+        prescription,
+        laborder,
+        bloodPressure,
+        heartRate,
+        temperature,
+        symptoms
       } = req.body;
 
-      // Validate required fields
-      if (!patient || !doctor || !treatmentDate || !treatmentType || !diagnosis || !treatment || !totalCost) {
-        return res.status(400).json({ 
-          message: "Thiếu thông tin bắt buộc: patient, doctor, treatmentDate, treatmentType, diagnosis, treatment, totalCost" 
-        });
+      if (!healthProfile || !doctor || !treatmentDate || !diagnosis) {
+        return res.status(400).json({ message: "Thiếu thông tin bắt buộc" });
       }
 
-      // Check if doctor exists
+      const hp = await HealthProfile.findById(healthProfile);
+      if (!hp) return res.status(404).json({ message: "Không tìm thấy health profile" });
+
       const doctorExists = await Doctor.findById(doctor);
-      if (!doctorExists) {
-        return res.status(404).json({ message: "Không tìm thấy bác sĩ" });
+      if (!doctorExists) return res.status(404).json({ message: "Không tìm thấy bác sĩ" });
+
+      let labOrderPrice = 0, prescriptionPrice = 0;
+
+      if (laborder) {
+        const labOrderDoc = await LabOrder.findById(laborder);
+        if (!labOrderDoc) return res.status(404).json({ message: "Không tìm thấy LabOrder" });
+        labOrderPrice = labOrderDoc.totalPrice || 0;
       }
 
-      // Check if patient exists
-      const patientExists = await Patient.findById(patient);
-      if (!patientExists) {
-        return res.status(404).json({ message: "Không tìm thấy bệnh nhân" });
+      if (prescription) {
+        const prescriptionDoc = await Prescription.findById(prescription);
+        if (!prescriptionDoc) return res.status(404).json({ message: "Không tìm thấy Prescription" });
+        prescriptionPrice = prescriptionDoc.totalPrice || 0;
       }
 
-      // If appointment is provided, check if it exists and update it
+      const totalCost = labOrderPrice + prescriptionPrice;
+
       if (appointment) {
-        const appointmentExists = await Appointment.findById(appointment);
-        if (!appointmentExists) {
-          return res.status(404).json({ message: "Không tìm thấy cuộc hẹn" });
-        }
-        
-        // Update appointment status to completed
-        await Appointment.findByIdAndUpdate(appointment, { 
-          status: "Completed",
-          actualCost: totalCost
-        });
+        await Appointment.findByIdAndUpdate(appointment, { status: "completed" })
       }
 
-      const treatmentRecord = new Treatment({
-        patient,
+      const saved = await Treatment.create({
+        healthProfile,
         doctor,
         appointment,
-        treatmentDate: new Date(treatmentDate),
-        treatmentType,
+        treatmentDate,
         diagnosis,
-        treatment,
-        medications,
-        totalCost,
-        patientReaction,
+        laborder,
+        prescription,
+        bloodPressure,
+        heartRate,
+        temperature,
+        symptoms,
+        totalCost
       });
 
-      const savedTreatment = await treatmentRecord.save();
-      
-      // Populate the saved treatment with doctor and patient details
-      const populatedTreatment = await Treatment.findById(savedTreatment._id)
-        .populate('doctor', 'name email expertise')
-        .populate('patient', 'name email phone')
-        .populate('appointment', 'appointmentDate appointmentTime treatmentType');
+      const populatedTreatment = await Treatment.findById(saved._id)
+        .populate('doctor', 'name')
+        .populate('appointment', 'appointmentDate')
+        .populate('healthProfile',);
+
+      // append owner_detail giống appointment API
+      const ownerModel = populatedTreatment.healthProfile.ownerModel;
+      const ownerId = populatedTreatment.healthProfile.ownerId;
+
+      let ownerModelRef = ownerModel === "Patient" ? Patient : FamilyMember;
+      const owner = await ownerModelRef.findById(ownerId).select("name dob phone gender");
+
+      populatedTreatment.healthProfile = {
+        ...populatedTreatment.healthProfile.toObject(),
+        owner_detail: owner
+      }
 
       res.status(201).json({
-        message: "Tạo hồ sơ điều trị thành công",
+        message: "Tạo treatment thành công",
         data: populatedTreatment
       });
-    } catch (err) {
-      console.error("Error creating treatment:", err);
-      res.status(400).json({ 
-        message: "Error creating treatment",
-        error: err.message 
-      });
+
+    } catch (error) {
+      console.log(error);
+      res.status(500).json({ message: "Internal server error", error: error.message });
     }
   }
 
@@ -122,7 +133,7 @@ class TreatmentController {
           .limit(pageSize),
         Treatment.countDocuments(filter)
       ]);
-      
+
       res.status(200).json({
         message: "Lấy danh sách hồ sơ điều trị thành công",
         count: items.length,
@@ -136,9 +147,9 @@ class TreatmentController {
       });
     } catch (err) {
       console.error("Error fetching treatments:", err);
-      res.status(500).json({ 
+      res.status(500).json({
         message: "Error fetching treatment records",
-        error: err.message 
+        error: err.message
       });
     }
   }
@@ -153,8 +164,8 @@ class TreatmentController {
         .populate('appointment', 'appointmentDate appointmentTime treatmentType status');
 
       if (!treatment) {
-        return res.status(404).json({ 
-          message: "Không tìm thấy hồ sơ điều trị" 
+        return res.status(404).json({
+          message: "Không tìm thấy hồ sơ điều trị"
         });
       }
 
@@ -164,9 +175,9 @@ class TreatmentController {
       });
     } catch (err) {
       console.error("Error fetching treatment by ID:", err);
-      res.status(500).json({ 
+      res.status(500).json({
         message: "Lỗi khi lấy thông tin hồ sơ điều trị",
-        error: err.message 
+        error: err.message
       });
     }
   }
@@ -183,16 +194,16 @@ class TreatmentController {
       delete updateData.updatedAt;
 
       const updatedTreatment = await Treatment.findByIdAndUpdate(
-        id, 
-        updateData, 
+        id,
+        updateData,
         { new: true, runValidators: true }
       ).populate('doctor', 'name email expertise')
-       .populate('patient', 'name email phone')
-       .populate('appointment', 'appointmentDate appointmentTime');
+        .populate('patient', 'name email phone')
+        .populate('appointment', 'appointmentDate appointmentTime');
 
       if (!updatedTreatment) {
-        return res.status(404).json({ 
-          message: "Không tìm thấy hồ sơ điều trị để cập nhật" 
+        return res.status(404).json({
+          message: "Không tìm thấy hồ sơ điều trị để cập nhật"
         });
       }
 
@@ -202,9 +213,9 @@ class TreatmentController {
       });
     } catch (err) {
       console.error("Error updating treatment:", err);
-      res.status(400).json({ 
+      res.status(400).json({
         message: "Lỗi khi cập nhật hồ sơ điều trị",
-        error: err.message 
+        error: err.message
       });
     }
   }
@@ -216,8 +227,8 @@ class TreatmentController {
       const deletedTreatment = await Treatment.findByIdAndDelete(id);
 
       if (!deletedTreatment) {
-        return res.status(404).json({ 
-          message: "Không tìm thấy hồ sơ điều trị để xóa" 
+        return res.status(404).json({
+          message: "Không tìm thấy hồ sơ điều trị để xóa"
         });
       }
 
@@ -227,9 +238,9 @@ class TreatmentController {
       });
     } catch (err) {
       console.error("Error deleting treatment:", err);
-      res.status(500).json({ 
+      res.status(500).json({
         message: "Lỗi khi xóa hồ sơ điều trị",
-        error: err.message 
+        error: err.message
       });
     }
   }
@@ -268,9 +279,9 @@ class TreatmentController {
       });
     } catch (err) {
       console.error("Error fetching treatments by patient:", err);
-      res.status(500).json({ 
+      res.status(500).json({
         message: "Lỗi khi lấy hồ sơ điều trị theo bệnh nhân",
-        error: err.message 
+        error: err.message
       });
     }
   }
@@ -282,7 +293,7 @@ class TreatmentController {
       const { startDate, endDate, page = 1, limit = 10 } = req.query;
 
       let filter = { doctor: doctorId };
-      
+
       if (startDate && endDate) {
         filter.treatmentDate = {
           $gte: new Date(startDate),
@@ -317,9 +328,9 @@ class TreatmentController {
       });
     } catch (err) {
       console.error("Error fetching treatments by doctor:", err);
-      res.status(500).json({ 
+      res.status(500).json({
         message: "Lỗi khi lấy hồ sơ điều trị theo bác sĩ",
-        error: err.message 
+        error: err.message
       });
     }
   }
@@ -331,7 +342,7 @@ class TreatmentController {
       const completedTreatments = await Treatment.countDocuments({ treatmentStatus: "Completed" });
       const inProgressTreatments = await Treatment.countDocuments({ treatmentStatus: "In-Progress" });
       const followUpRequired = await Treatment.countDocuments({ treatmentStatus: "Requires Follow-up" });
-      
+
       const totalRevenue = await Treatment.aggregate([
         { $group: { _id: null, total: { $sum: "$totalCost" } } }
       ]);
@@ -354,9 +365,9 @@ class TreatmentController {
       });
     } catch (err) {
       console.error("Error fetching treatment stats:", err);
-      res.status(500).json({ 
+      res.status(500).json({
         message: "Lỗi khi lấy thống kê điều trị",
-        error: err.message 
+        error: err.message
       });
     }
   }
