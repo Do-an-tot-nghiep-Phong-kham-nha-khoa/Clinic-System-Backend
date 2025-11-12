@@ -151,7 +151,7 @@ module.exports.assignDoctor = async (req, res) => {
     // Bác sĩ phải cùng chuyên khoa với lịch hẹn
     if (doctor.specialtyId.toString() !== appointment.specialty_id.toString()) {
       return res.status(400).json({ message: 'Doctor specialty does not match appointment specialty' });
-    }else console.log('Specialty match');
+    } else console.log('Specialty match');
 
     // ==== 4. Tìm schedule của bác sĩ cho ngày đó ====
     const dateOnly = new Date(appointment.appointmentDate);
@@ -168,9 +168,9 @@ module.exports.assignDoctor = async (req, res) => {
     if (!schedule) {
       return res.status(400).json({ message: 'Doctor has no schedule for this date' });
     }
-     const normalize = t => t.split(" ")[0].split("-")[0].trim().slice(0, 5);
+    const normalize = t => t.split(" ")[0].split("-")[0].trim().slice(0, 5);
     const normalizedAppointmentSlot = normalize(appointment.timeSlot);
-    
+
     // ==== 5. Kiểm tra slot có trống không ====
     const slotIndex = schedule.timeSlots.findIndex(
       slot => normalize(slot.startTime) === normalizedAppointmentSlot
@@ -300,19 +300,47 @@ module.exports.getAppointmentsByDoctor = async (req, res) => {
 module.exports.getAppointmentsByBooker = async (req, res) => {
   try {
     const { id } = req.params; // booker_id
-    const { status } = req.query;
+    const { date, status } = req.query;
 
     const filter = { booker_id: id };
+    if (date) filter.appointmentDate = new Date(date);
     if (status) filter.status = status;
 
-    const appointments = await Appointment.find(filter)
-      .populate('doctor_id specialty_id booker_id')
+    let appointments = await Appointment.find(filter)
+      .populate('doctor_id specialty_id healthProfile_id')
       .sort({ appointmentDate: -1 });
 
     if (!appointments.length)
       return res.status(404).json({ message: 'No appointments found for this patient' });
 
-    res.status(200).json({ count: appointments.length, appointments });
+    const final = await Promise.all(
+      appointments.map(async (app) => {
+        const hp = app.healthProfile_id;
+
+        if (!hp || !hp.ownerId || !hp.ownerModel) {
+          return app.toObject();
+        }
+
+        let owner;
+        if (hp.ownerModel === "Patient") {
+          owner = await Patient.findById(hp.ownerId)
+            .select("name dob phone gender");
+        } else if (hp.ownerModel === "FamilyMember") {
+          owner = await FamilyMember.findById(hp.ownerId)
+            .select("name dob phone gender");
+        }
+
+        return {
+          ...app.toObject(),
+          healthProfile_id: {
+            ...hp.toObject(),
+            owner_detail: owner || null
+          }
+        };
+      })
+    );
+
+    res.status(200).json({ count: final.length, appointments: final });
   } catch (error) {
     console.error('Error fetching patient appointments:', error);
     res.status(500).json({ message: 'Internal server error' });

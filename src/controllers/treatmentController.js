@@ -6,6 +6,7 @@ const FamilyMember = require("../models/familyMember");
 const LabOrder = require("../models/labOrder");
 const Prescription = require("../models/prescription");
 const HealthProfile = require("../models/healthProfile");
+const Invoice = require("../models/invoice");
 
 class TreatmentController {
   // Tạo hồ sơ điều trị mới
@@ -85,6 +86,27 @@ class TreatmentController {
       populatedTreatment.healthProfile = {
         ...populatedTreatment.healthProfile.toObject(),
         owner_detail: owner
+      }
+
+      // create invoice
+      let createdInvoice = null;
+      if (prescription || laborder) {
+        try {
+          const invoiceTotal = totalCost; // đã tính ở trên (labOrderPrice + prescriptionPrice)
+
+          const invoice = new Invoice({
+            totalPrice: invoiceTotal,
+            status: 'Pending',
+            healthProfile_id: healthProfile,
+            created_at: treatmentDate,
+            prescriptionId: prescription || null,
+            labOrderId: laborder || null,
+          });
+
+          createdInvoice = await invoice.save();
+        } catch (invoiceError) {
+          console.log("Lỗi khi tạo Invoice:", invoiceError.message);
+        }
       }
 
       res.status(201).json({
