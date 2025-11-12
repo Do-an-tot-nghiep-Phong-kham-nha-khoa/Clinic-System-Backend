@@ -3,11 +3,30 @@ const Role = require('../models/role');
 // [GET] /admin/roles
 module.exports.index = async (req, res) => {
   try {
-    const roles = await Role.find({ deleted: false }).sort({ createdAt: -1 });
-    return res.status(200).json({
-      titlePage: "Danh sách nhóm quyền",
-      roles,
-    });
+    // Use aggregation to include user counts for each role
+    const roles = await Role.aggregate([
+      { $match: { deleted: false } },
+      // lookup accounts that reference this role
+      {
+        $lookup: {
+          from: 'accounts',
+          localField: '_id',
+          foreignField: 'roleId',
+          as: 'accounts',
+        },
+      },
+      // add userCount field
+      {
+        $addFields: {
+          userCount: { $size: { $ifNull: ['$accounts', []] } },
+        },
+      },
+      // remove accounts array from result
+      { $project: { accounts: 0 } },
+      { $sort: { createdAt: -1 } },
+    ]);
+
+    return res.status(200).json({ titlePage: 'Danh sách nhóm quyền', roles });
   } catch (error) {
     return res.status(500).json({ message: "Lỗi khi lấy danh sách roles", error });
   }

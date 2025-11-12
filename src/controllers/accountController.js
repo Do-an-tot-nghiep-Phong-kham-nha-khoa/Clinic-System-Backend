@@ -58,7 +58,6 @@ module.exports.register = async (req, res) => {
     });
     return res.status(201).json({ message: "Đăng ký thành công!", accountId: newAccount._id });
   } catch (error) {
-    console.error("Register error:", error);
     return res.status(500).json({ message: "Lỗi khi đăng ký tài khoản!" });
   }
 };

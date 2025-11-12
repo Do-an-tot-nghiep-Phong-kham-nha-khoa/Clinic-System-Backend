@@ -14,11 +14,12 @@ const receptionistRoutes = require('./receptionistRoutes');
 const familyMemberRoutes = require('./familyMemberRoutes');
 const treatmentRoutes = require('./treatmentRoutes');
 const roleRoutes = require('./roleRoutes');
-const userMiddleware = require('../middlewares/user_middleware');
+const authenticate = require('../middlewares/authenticate');
+const authorize = require('../middlewares/authorize');
 
 module.exports = (app) => {
     app.use('/patients', patientsRoutes);
-    app.use('/appointments', appointmentsRoutes);
+    app.use('/appointments', authenticate.authenticate, authorize.authorize('appointment'), appointmentsRoutes);
     app.use('/services', servicesRoutes);
     app.use('/medicines', medicineRoutes);
     app.use('/laborders', labOrderRoutes);
