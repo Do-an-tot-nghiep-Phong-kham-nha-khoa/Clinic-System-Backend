@@ -4,6 +4,7 @@ const Doctor = require('../models/doctor');
 const Schedule = require('../models/schedule');
 const Specialty = require('../models/specialty');
 const HealthProfile = require('../models/healthProfile');
+const FamilyMember = require('../models/familyMember');
 
 // [POST] /appointments/by-doctor
 module.exports.createByDoctor = async (req, res) => {
@@ -246,26 +247,54 @@ module.exports.getAllAppointments = async (req, res) => {
 // [GET] /appointments/doctor/:id
 module.exports.getAppointmentsByDoctor = async (req, res) => {
   try {
-    const { id } = req.params; // doctor_id
+    const { id } = req.params;
     const { date, status } = req.query;
 
     const filter = { doctor_id: id };
     if (date) filter.appointmentDate = new Date(date);
     if (status) filter.status = status;
 
-    const appointments = await Appointment.find(filter)
-      .populate('doctor_id specialty_id booker_id')
+    let appointments = await Appointment.find(filter)
+      .populate('healthProfile_id')
       .sort({ appointmentDate: 1 });
 
     if (!appointments.length)
       return res.status(404).json({ message: 'No appointments found for this doctor' });
 
-    res.status(200).json({ count: appointments.length, appointments });
+    // append owner info (Patient or FamilyMember)
+    const final = await Promise.all(
+      appointments.map(async (app) => {
+        const hp = app.healthProfile_id;
+
+        if (!hp || !hp.ownerId || !hp.ownerModel) return app;
+
+        let owner;
+        if (hp.ownerModel === "Patient") {
+          owner = await Patient.findById(hp.ownerId)
+            .select("name dob phone gender");
+        } else if (hp.ownerModel === "FamilyMember") {
+          owner = await FamilyMember.findById(hp.ownerId)
+            .select("name dob phone gender");
+        }
+
+        return {
+          ...app.toObject(),
+          healthProfile_id: {
+            ...hp.toObject(),
+            owner_detail: owner || null
+          }
+        };
+      })
+    );
+
+    res.status(200).json({ count: final.length, appointments: final });
+
   } catch (error) {
     console.error('Error fetching doctor appointments:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
+
 
 // [GET] /appointments/booker/:id
 module.exports.getAppointmentsByBooker = async (req, res) => {

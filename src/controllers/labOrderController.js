@@ -2,6 +2,9 @@ const mongoose = require('mongoose');
 const LabOrder = require('../models/labOrder');
 const Service = require('../models/service');
 const { getPagingParams, buildMeta } = require('../helpers/query');
+const HealthProfile = require('../models/healthProfile');
+const Patient = require('../models/patient');
+const FamilyMember = require('../models/familyMember');
 
 // GET /api/laborders
 exports.list = async (req, res) => {
@@ -35,12 +38,19 @@ exports.list = async (req, res) => {
             ? { 'items.serviceId': new mongoose.Types.ObjectId(query.serviceId) }
             : {};
 
+        const finalFilter = { ...conditions, ...itemMatch };
+
         // Base query with populate
         let dataQuery = LabOrder.find({ ...conditions, ...itemMatch })
             .populate({
                 path: 'items.serviceId',
                 model: 'Service',
                 select: 'name description price',
+            })
+            .populate({
+                path: 'healthProfile_id',
+                model: 'HealthProfile',
+                select: 'ownerId ownerModel'
             })
             .lean();
 
@@ -65,12 +75,43 @@ exports.list = async (req, res) => {
             LabOrder.countDocuments(conditions),
         ]);
 
-        const filteredData = data.map((lo) => ({
-            ...lo,
-            items: Array.isArray(lo.items) ? lo.items.filter((it) => it && it.serviceId) : [],
+        // Resolve owner details in parallel for performance
+        const resolved = await Promise.all(data.map(async (lo) => {
+            const hp = lo.healthProfile_id;
+            let owner_detail = null;
+
+            if (hp && hp.ownerId && hp.ownerModel) {
+                // choose model
+                if (hp.ownerModel === 'Patient') {
+                    const p = await Patient.findById(hp.ownerId).select('name dob phone gender').lean();
+                    if (p) owner_detail = { name: p.name, dob: p.dob, phone: p.phone, gender: p.gender };
+                } else if (hp.ownerModel === 'FamilyMember') {
+                    const fm = await FamilyMember.findById(hp.ownerId).select('name dob phone gender').lean();
+                    if (fm) owner_detail = { name: fm.name, dob: fm.dob, phone: fm.phone, gender: fm.gender };
+                }
+            }
+
+            return {
+                _id: lo._id,
+                testTime: lo.testTime,
+                totalPrice: lo.totalPrice,
+                healthProfile_id: hp?._id || null,
+                owner_detail, // null nếu không tìm được
+                items: Array.isArray(lo.items) ? lo.items.filter(it => it && it.serviceId).map(item => ({
+                    quantity: item.quantity,
+                    description: item.description,
+                    serviceId: item.serviceId?._id || null,
+                    service: item.serviceId ? {
+                        _id: item.serviceId._id,
+                        name: item.serviceId.name,
+                        description: item.serviceId.description,
+                        price: item.serviceId.price
+                    } : null
+                })) : []
+            };
         }));
 
-        res.json({ data: filteredData, meta: buildMeta(total, paging.page, paging.limit) });
+        res.json({ data: resolved, meta: buildMeta(total, paging.page, paging.limit) });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -79,17 +120,21 @@ exports.list = async (req, res) => {
 // POST /api/laborders
 exports.create = async (req, res) => {
     try {
-        const { testTime = new Date().toISOString(), items, patientId } = req.body;
+        const { testTime = new Date().toISOString(), items, healthProfile_id } = req.body;
         if (!Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ message: 'Items (services) are required' });
         }
 
-        if (!patientId) { // Kiểm tra patientId
-            return res.status(400).json({ message: 'Patient ID is required' });
+        if (!healthProfile_id) {
+            return res.status(400).json({ message: 'healthProfile_id is required' });
         }
-        if (!mongoose.isValidObjectId(patientId)) { // Kiểm tra tính hợp lệ của ObjectId
-            return res.status(400).json({ message: `Invalid Patient ID format: ${patientId}` });
+        if (!mongoose.isValidObjectId(healthProfile_id)) {
+            return res.status(400).json({ message: `Invalid healthProfile_id format: ${healthProfile_id}` });
         }
+
+        // verify health profile existence
+        const hp = await HealthProfile.findById(healthProfile_id).lean();
+        if (!hp) return res.status(404).json({ message: "Health Profile not found" });
 
         const required = ['serviceId', 'quantity'];
         for (const item of items) {
@@ -100,6 +145,7 @@ exports.create = async (req, res) => {
                 return res.status(400).json({ message: `Invalid serviceId: ${item.serviceId}` });
             }
         }
+
         // Verify services and map prices
         const serviceIds = items.map((i) => new mongoose.Types.ObjectId(i.serviceId));
         const services = await Service.find({ _id: { $in: serviceIds } }).lean();
@@ -109,48 +155,34 @@ exports.create = async (req, res) => {
         }
         const priceMap = new Map(services.map((s) => [s._id.toString(), s.price || 0]));
         const totalPrice = items.reduce((sum, it) => sum + (priceMap.get(String(it.serviceId)) || 0) * Number(it.quantity), 0);
+
         // Prepare items for embedding
         const formattedItems = items.map((it) => ({
             serviceId: new mongoose.Types.ObjectId(it.serviceId),
             quantity: Number(it.quantity),
             description: it.description || undefined // Include description only if provided
         }));
+
         // Create and save the LabOrder with embedded items
         const labOrder = new LabOrder({
             testTime,
             totalPrice,
             items: formattedItems,
-            patientId: new mongoose.Types.ObjectId(patientId) // Thêm patientId đã chuyển đổi thành ObjectId
+            healthProfile_id: new mongoose.Types.ObjectId(healthProfile_id)
         });
         await labOrder.save();
+
         // Populate the embedded items' serviceId
         const result = await LabOrder.findById(labOrder._id)
             .populate('items.serviceId', 'name description price')
+            .populate('healthProfile_id', 'ownerId ownerModel')
             .lean();
 
         if (!result || !Array.isArray(result.items)) {
             return res.status(500).json({ message: 'Failed to populate items' });
         }
-        // Format the response
-        const response = {
-            _id: result._id,
-            testTime: result.testTime,
-            totalPrice: result.totalPrice,
-            createdAt: result.createdAt,
-            patientId: result.patientId,
-            items: result.items.filter(Boolean).map((item) => ({
-                quantity: item.quantity,
-                description: item.description,
-                serviceId: item.serviceId?._id,
-                service: item.serviceId && {
-                    _id: item.serviceId._id,
-                    name: item.serviceId.name,
-                    description: item.serviceId.description,
-                    price: item.serviceId.price,
-                },
-            })),
-        };
-        res.status(201).json(response);
+
+        res.status(201).json(result);
     } catch (error) {
         res.status(400).json({ message: error.message });
     }
