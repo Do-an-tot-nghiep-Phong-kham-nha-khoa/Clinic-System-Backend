@@ -16,7 +16,7 @@ const treatmentRoutes = require('./treatmentRoutes');
 const roleRoutes = require('./roleRoutes');
 const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
-
+const adminRoutes = require('./adminRoutes');
 module.exports = (app) => {
     app.use('/patients', patientsRoutes);
     app.use('/appointments', authenticate.authenticate, authorize.authorize('appointment'), appointmentsRoutes);
@@ -34,4 +34,5 @@ module.exports = (app) => {
     app.use('/family-members', familyMemberRoutes);
     app.use('/treatments', treatmentRoutes);
     app.use('/admin/roles', roleRoutes);
+    app.use('/admins', adminRoutes);
 }
