@@ -25,53 +25,6 @@ module.exports.getHealthProfile = async (req, res) => {
     }
 };
 
-// [POST] /health-profile/:patientId
-module.exports.createHealthProfile = async (req, res) => {
-    try {
-        const { patientId } = req.params;
-        const { height, weight, bloodType, allergies, chronicConditions, medications, emergencyContact } = req.body;
-
-        const existingProfile = await HealthProfile.findOne({ patient_id: patientId });
-        if (existingProfile) {
-            return res.status(400).json({ message: "Health profile already exists" });
-        }
-        const healthProfile = new HealthProfile({
-            patient_id: patientId,
-            height,
-            weight,
-            bloodType,
-            allergies,
-            chronicConditions,
-            medications,
-            emergencyContact
-        });
-
-        await healthProfile.save();
-        return res.status(201).json(healthProfile);
-    } catch (error) {
-        res.status(500).json({ message: "Internal server error" });
-    }
-};
-
-// [PATCH] /health-profile/:patientId
-module.exports.updateHealthProfile = async (req, res) => {
-    try {
-        const { patientId } = req.params;
-        const updates = req.body;
-        const healthProfile = await HealthProfile.findOneAndUpdate(
-            { patient_id: patientId },
-            { ...updates, lastUpdated: Date.now() },
-            { new: true }
-        );
-        if (!healthProfile) {
-            return res.status(404).json({ message: "Health profile not found" });
-        }
-        res.json(healthProfile);
-    } catch (error) {
-        console.error("Error updating health profile:", error);
-        res.status(500).json({ message: "Internal server error" });
-    }
-};
 
 // [POST] /health-profiles/:ownerModel/:ownerId
 module.exports.createHealthProfileNew = async (req, res) => {
@@ -153,5 +106,36 @@ module.exports.getAllHealthProfiles = async (req, res) => {
     } catch (error) {
         console.error("Error fetching health profiles:", error);
         res.status(500).json({ message: "Error fetching health profiles", error });
+    }
+};
+
+// [PATCH] /health-profiles/profile/:profileId
+module.exports.updateHealthProfileById = async (req, res) => {
+    try {
+        const { profileId } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(profileId)) return res.status(400).json({ message: 'Invalid profileId' });
+
+        const updates = req.body;
+        const profile = await HealthProfile.findByIdAndUpdate(profileId, { ...updates, lastUpdated: Date.now() }, { new: true });
+        if (!profile) return res.status(404).json({ message: 'Health profile not found' });
+
+        return res.json(profile);
+    } catch (error) {
+        console.error('Error updating health profile by id:', error);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// [DELETE] /health-profiles/profile/:profileId
+module.exports.deleteHealthProfileById = async (req, res) => {
+    try {
+        const { profileId } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(profileId)) return res.status(400).json({ message: 'Invalid health profile id' });
+        const profile = await HealthProfile.findByIdAndDelete(profileId);
+        if (!profile) return res.status(404).json({ message: 'Health profile not found' });
+        return res.status(200).json({ message: 'Health profile deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting health profile:', error);
+        return res.status(500).json({ message: 'Internal server error' });
     }
 };
