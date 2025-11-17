@@ -9,6 +9,8 @@ router.get('/', adminController.getAdmins);
 
 router.get('/:id', adminController.getAdmin);
 
+router.get('/account/:accountId', adminController.getAdminByAccountId);
+
 router.post('/', adminController.createAdmin);
 
 router.put('/:id', adminController.updatedAdmin);

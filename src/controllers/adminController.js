@@ -39,6 +39,22 @@ module.exports = {
             return res.status(500).json({ message: error.message });
         }
     },
+    // GET /admins/account/:accountId
+    getAdminByAccountId: async (req, res) => {
+        try {
+            const { accountId } = req.params;
+            if (!mongoose.Types.ObjectId.isValid(accountId)) {
+                return res.status(400).json({ message: "Invalid account id format" });
+            }
+            const admin = await Admin.findOne({ accountId }).populate("accountId").lean();
+            if (!admin) {
+                return res.status(404).json({ message: "Admin not found" });
+            }
+            return res.json(admin);
+        } catch (error) {
+            return res.status(500).json({ message: error.message });
+        }
+    },
     // POST /admins
     createAdmin: async (req, res) => {
         try {
