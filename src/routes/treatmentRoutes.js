@@ -27,4 +27,6 @@ router.get("/doctor/:doctorId", treatmentController.getTreatmentsByDoctor);
 // Lấy thống kê điều trị
 router.get("/stats/overview", treatmentController.getTreatmentStats);
 
+router.get("/booker/:id", treatmentController.getTreatmentsByBooker);
+
 module.exports = router;
