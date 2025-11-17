@@ -8,6 +8,12 @@ const Prescription = require("../models/prescription");
 const HealthProfile = require("../models/healthProfile");
 const Invoice = require("../models/invoice");
 
+const {
+  getPagingParams,
+  applyPagingAndSortingToQuery,
+  buildMeta
+} = require("../helpers/query");
+
 class TreatmentController {
   // Tạo hồ sơ điều trị mới
   async createTreatment(req, res) {
@@ -180,27 +186,67 @@ class TreatmentController {
   async getTreatmentById(req, res) {
     try {
       const { id } = req.params;
-      const treatment = await Treatment.findById(id)
-        .populate('doctor', 'name email expertise phone')
-        .populate('patient', 'name email phone address')
-        .populate('appointment', 'appointmentDate appointmentTime treatmentType status');
+
+      // 1️⃣ Tìm treatment theo ID
+      let treatment = await Treatment.findById(id)
+        .populate({
+          path: "doctor",
+          select: "name phone specialtyId",
+          populate: { path: "specialtyId", select: "name" }
+        })
+        .populate({
+          path: "appointment",
+          select: "appointmentDate timeSlot"
+        })
+        .populate({
+          path: "laborder",
+          populate: {
+            path: "items.serviceId",
+            model: "Service",
+            select: "name price"
+          }
+        })
+        .populate({
+          path: "prescription",
+          populate: {
+            path: "items.medicineId",
+            model: "Medicine",
+            select: "name unit manufacturer expiryDate price"
+          }
+        })
+        .populate({
+          path: "healthProfile",
+          select: "ownerId ownerModel"
+        });
 
       if (!treatment) {
-        return res.status(404).json({
-          message: "Không tìm thấy hồ sơ điều trị"
-        });
+        return res.status(404).json({ message: "Treatment not found" });
       }
 
-      res.status(200).json({
-        message: "Lấy thông tin hồ sơ điều trị thành công",
-        data: treatment
-      });
-    } catch (err) {
-      console.error("Error fetching treatment by ID:", err);
-      res.status(500).json({
-        message: "Lỗi khi lấy thông tin hồ sơ điều trị",
-        error: err.message
-      });
+      // 2️⃣ Format dữ liệu như API danh sách
+      const hp = treatment.healthProfile;
+      let ownerDetail = null;
+
+      if (hp?.ownerId && hp?.ownerModel) {
+        if (hp.ownerModel === "Patient") {
+          ownerDetail = await Patient.findById(hp.ownerId).select("name dob phone gender");
+        } else if (hp.ownerModel === "FamilyMember") {
+          ownerDetail = await FamilyMember.findById(hp.ownerId).select("name dob phone gender");
+        }
+      }
+
+      const obj = treatment.toObject();
+      obj.healthProfile = {
+        ownerId: hp?.ownerId || null,
+        ownerModel: hp?.ownerModel || null,
+        owner_detail: ownerDetail
+      };
+
+      return res.status(200).json(obj);
+
+    } catch (error) {
+      console.error("Error fetching treatment by ID:", error);
+      return res.status(500).json({ message: "Internal server error" });
     }
   }
 
@@ -391,6 +437,121 @@ class TreatmentController {
         message: "Lỗi khi lấy thống kê điều trị",
         error: err.message
       });
+    }
+  }
+
+  async getTreatmentsByBooker(req, res) {
+    try {
+      const { id } = req.params; // booker_id (Patient ID)
+
+      // Lấy các param phân trang + sắp xếp
+      const paging = getPagingParams(req.query, {
+        defaultPage: 1,
+        defaultLimit: 10,
+        sortBy: "treatmentDate",
+        sortOrder: "desc"
+      });
+
+      // Lọc theo ngày (nếu có)
+      const filter = {};
+      if (req.query.from || req.query.to) {
+        filter.treatmentDate = {};
+        if (req.query.from) filter.treatmentDate.$gte = new Date(req.query.from);
+        if (req.query.to) filter.treatmentDate.$lte = new Date(req.query.to);
+      }
+
+      // Tìm danh sách appointment của booker
+      const appointments = await Appointment.find({ booker_id: id }).select("_id");
+
+      if (!appointments.length)
+        return res.status(404).json({ message: "No treatments found for this patient" });
+
+      const appointmentIds = appointments.map(a => a._id);
+
+      // Query treatment
+      let query = Treatment.find({
+        appointment: { $in: appointmentIds },
+        ...filter
+      })
+        .populate({
+          path: "doctor",
+          select: "name phone specialtyId",
+          populate: { path: "specialtyId", select: "name" }
+        })
+        .populate({
+          path: "appointment",
+          select: "appointmentDate timeSlot"
+        })
+        .populate({
+          path: "laborder",
+          populate: {
+            path: "items.serviceId",
+            model: "Service",
+            select: "name"
+          }
+        })
+        .populate({
+          path: "prescription",
+          populate: {
+            path: "items.medicineId",
+            model: "Medicine",
+            select: "name unit manufacturer expiryDate"
+          }
+        })
+        .populate({
+          path: "healthProfile",
+          select: "ownerId ownerModel"
+        });
+
+      // Áp dụng sort + skip + limit
+      query = applyPagingAndSortingToQuery(query, paging);
+
+      // Lấy dữ liệu + tổng count
+      const [treatments, total] = await Promise.all([
+        query.exec(),
+        Treatment.countDocuments({
+          appointment: { $in: appointmentIds },
+          ...filter
+        })
+      ]);
+
+      if (!treatments.length)
+        return res.status(404).json({ message: "No treatments found for this patient" });
+
+      // Format kết quả
+      const formatted = await Promise.all(
+        treatments.map(async (t) => {
+          const hp = t.healthProfile;
+          let ownerDetail = null;
+
+          if (hp?.ownerId && hp?.ownerModel) {
+            if (hp.ownerModel === "Patient") {
+              ownerDetail = await Patient.findById(hp.ownerId).select("name dob phone gender");
+            } else if (hp.ownerModel === "FamilyMember") {
+              ownerDetail = await FamilyMember.findById(hp.ownerId).select("name dob phone gender");
+            }
+          }
+
+          const obj = t.toObject();
+          obj.healthProfile = {
+            ownerId: hp?.ownerId || null,
+            ownerModel: hp?.ownerModel || null,
+            owner_detail: ownerDetail || null
+          };
+
+          return obj;
+        })
+      );
+
+      // Trả kết quả cuối cùng
+      res.status(200).json({
+        meta: buildMeta(total, paging.page, paging.limit),
+        treatments: formatted
+      });
+
+    } catch (error) {
+      console.error("Error fetching treatments by booker:", error);
+      res.status(500).json({ message: "Internal server error" });
     }
   }
 }
