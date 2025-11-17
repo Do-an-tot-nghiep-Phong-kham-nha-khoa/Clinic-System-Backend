@@ -18,14 +18,47 @@ module.exports.getDoctorScheduleByID = async (req, res) => {
 module.exports.getDoctorScheduleByDate = async (req, res) => {
     try {
         const { doctor_id, date } = req.params;
-        const schedule = await Schedule.findOne({ doctor_id, date });
+        const shift = req.query.shift;
 
-        if (!schedule)
+        const startDate = new Date(date);
+        const endDate = new Date(date);
+        endDate.setHours(23, 59, 59, 999);
+
+        const schedules = await Schedule.find({
+            doctor_id,
+            date: { $gte: startDate, $lte: endDate }
+        });
+
+        if (!schedules.length)
             return res.status(404).json({ message: "No schedule found for this doctor/date" });
 
-        const availableSlots = schedule.timeSlots.filter(slot => !slot.isBooked);
+        let availableSlots = [];
+
+        schedules.forEach(sch => {
+            sch.timeSlots.forEach(slot => {
+                if (!slot.isBooked) {
+                    availableSlots.push({
+                        startTime: slot.startTime,
+                        endTime: slot.endTime
+                    });
+                }
+            });
+        });
+
+        // filter theo shift
+        if (shift) {
+            const isMorning = time => Number(time.split(':')[0]) < 12;
+            if (shift === 'morning') availableSlots = availableSlots.filter(s => isMorning(s.startTime));
+            if (shift === 'afternoon') availableSlots = availableSlots.filter(s => !isMorning(s.startTime));
+        }
+
+        // sort theo startTime
+        availableSlots.sort((a, b) => Number(a.startTime.replace(':', '')) - Number(b.startTime.replace(':', '')));
+
         res.status(200).json(availableSlots);
+
     } catch (error) {
+        console.error("Error fetching available slots:", error);
         res.status(500).json({ message: "Error fetching available slots", error });
     }
 };
