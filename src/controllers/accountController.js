@@ -211,23 +211,49 @@ module.exports.resetPasswordPost = async (req, res) => {
 // [GET] /accounts
 module.exports.getAccounts = async (req, res) => {
   try {
-    const accounts = await Account.find({ deleted: false }).populate('roleId', 'name');
+    let accounts = await Account.find({ deleted: false })
+      .populate('roleId', 'name')
+      .select('-password')
+      .lean(); // để dễ xử lý dữ liệu
+
+    // Chuẩn hóa dữ liệu roleId (nếu là mảng thì lấy phần tử đầu)
+    accounts = accounts.map(acc => {
+      if (Array.isArray(acc.roleId)) {
+        acc.roleId = acc.roleId[0] || null;
+      }
+      return acc;
+    });
+
     return res.status(200).json({ accounts });
   } catch (error) {
+    console.error(error);
     return res.status(500).json({ message: "Không thể lấy danh sách tài khoản!" });
   }
 };
+
 // [GET] /accounts/{id}
 module.exports.getAccountById = async (req, res) => {
   try {
     const { id } = req.params;
-    const account = await Account.findOne({ _id: id, deleted: false }).populate('roleId', 'name');
-    if (!account) return res.status(404).json({ message: "Tài khoản không tồn tại!" });
+    let account = await Account.findOne({ _id: id, deleted: false })
+      .populate('roleId', 'name')
+      .select('-password')
+      .lean();
+    if (!account) {
+      return res.status(404).json({ message: "Tài khoản không tồn tại!" });
+    }
+
+    if (Array.isArray(account.roleId)) {
+      account.roleId = account.roleId[0] || null;
+    }
+
     return res.status(200).json({ account });
   } catch (error) {
+    console.error(error);
     return res.status(500).json({ message: "Không thể lấy thông tin tài khoản!" });
   }
 };
+
 // [PUT] /accounts/{id}
 module.exports.updateAccount = async (req, res) => {
   try {

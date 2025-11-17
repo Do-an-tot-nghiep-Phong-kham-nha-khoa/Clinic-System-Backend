@@ -102,7 +102,7 @@ class DoctorController {
     }
   }
 
-  // Lấy chi tiết bác sĩ theo ID (kèm lịch làm việc)
+  //[GET] /doctors/:id
   async getDoctorById(req, res) {
     try {
       const { id } = req.params;
@@ -268,6 +268,7 @@ class DoctorController {
       const doctor = await Doctor.findOne({ accountId })
         .populate("specialtyId", "name")
         .populate("accountId", "email status");
+      
       if (!doctor) {
         return res.status(404).json({ message: "Không tìm thấy bác sĩ" });
       }

@@ -7,17 +7,61 @@ const mongoose = require('mongoose');
 
 // [POST] /patients/register
 module.exports.register = async (req, res) => {
-  const existEmail = await Patient.findOne({ email: req.body.email });
-  if (existEmail) {
-    return res.status(400).json({ message: "Email đã tồn tại!" });
-  }
+  try {
+    const { email, password, name, phone, dob, address, gender } = req.body;
 
-  req.body.password = bcrypt.hashSync(req.body.password, 10);
-  const patient = new Patient(req.body);
-  await patient.save();
-  res.cookie("tokenUser", patient.tokenUser);
-  return res.status(201).json({ message: "Đăng ký thành công!" });
+    if (!email || !password || !name || !phone) {
+      return res.status(400).json({ message: "Thiếu dữ liệu bắt buộc!" });
+    }
+
+    // Kiểm tra account trùng email
+    const existAccount = await Account.findOne({ email });
+    if (existAccount) {
+      return res.status(400).json({ message: "Email đã tồn tại!" });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Lấy role patient
+    const patientRole = await Role.findOne({ name: "patient" });
+    if (!patientRole) {
+      return res.status(500).json({ message: "Chưa cấu hình role patient!" });
+    }
+
+    // Tạo account mới
+    const account = new Account({
+      email,
+      password: hashedPassword,
+      roleId: patientRole._id,
+    });
+    const savedAccount = await account.save();
+
+    // Tạo patient gắn accountId
+    const patient = new Patient({
+      accountId: savedAccount._id,
+      name,
+      phone,
+      dob,
+      address,
+      gender,
+    });
+    const savedPatient = await patient.save();
+
+    return res.status(201).json({
+      message: "Đăng ký thành công",
+      data: {
+        account: savedAccount,
+        patient: savedPatient,
+      },
+    });
+
+  } catch (err) {
+    console.error("Register error:", err);
+    return res.status(500).json({ message: "Lỗi server", error: err.message });
+  }
 };
+
 
 // [POST] /patients/login
 module.exports.login = async (req, res) => {
