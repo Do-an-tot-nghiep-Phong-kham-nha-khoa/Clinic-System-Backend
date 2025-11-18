@@ -411,3 +411,84 @@ module.exports.createBySpecialty = async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
+
+// [PUT] /appointments/:id/cancel
+module.exports.cancelAppointment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const appointment = await Appointment.findById(id);
+    if (!appointment) {
+      return res.status(404).json({ message: 'Appointment not found' });
+    }
+    appointment.status = 'cancelled';
+    await appointment.save();
+    res.status(200).json({ message: 'Appointment cancelled successfully', appointment });
+  } catch (error) {
+    console.error('Error cancelling appointment:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// [GET] /appointments/doctor/:id/today
+module.exports.getAppointmentsByDoctorToday = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.query;
+
+    // Get today's date range (start and end of day)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const filter = {
+      doctor_id: id,
+      appointmentDate: { $gte: today, $lt: tomorrow }
+    };
+    if (status) filter.status = status;
+
+    let appointments = await Appointment.find(filter)
+      .populate('healthProfile_id specialty_id')
+      .sort({ timeSlot: 1 }); // Sort by time slot for today's schedule
+
+    if (!appointments.length) {
+      return res.status(200).json({
+        message: 'No appointments found for this doctor today',
+        count: 0,
+        appointments: []
+      });
+    }
+
+    // Append owner info (Patient or FamilyMember)
+    const final = await Promise.all(
+      appointments.map(async (app) => {
+        const hp = app.healthProfile_id;
+
+        if (!hp || !hp.ownerId || !hp.ownerModel) return app.toObject();
+
+        let owner;
+        if (hp.ownerModel === "Patient") {
+          owner = await Patient.findById(hp.ownerId)
+            .select("name dob phone gender");
+        } else if (hp.ownerModel === "FamilyMember") {
+          owner = await FamilyMember.findById(hp.ownerId)
+            .select("name dob phone gender");
+        }
+
+        return {
+          ...app.toObject(),
+          healthProfile_id: {
+            ...hp.toObject(),
+            owner_detail: owner || null
+          }
+        };
+      })
+    );
+
+    res.status(200).json({ count: final.length, appointments: final });
+
+  } catch (error) {
+    console.error('Error fetching doctor appointments for today:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
