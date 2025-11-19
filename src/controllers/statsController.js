@@ -15,7 +15,13 @@ exports.getAppointmentsLast7Days = async (req, res) => {
             },
             {
                 $group: {
-                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+                    _id: {
+                        $dateToString: {
+                            format: "%Y-%m-%d",
+                            date: "$appointmentDate",
+                            timezone: "+00:00"
+                        }
+                    },
                     count: { $sum: 1 }
                 }
             },
@@ -27,6 +33,7 @@ exports.getAppointmentsLast7Days = async (req, res) => {
         res.status(500).json({ message: e.message });
     }
 }
+
 
 exports.getRevenueLast7Days = async (req, res) => {
     try {
