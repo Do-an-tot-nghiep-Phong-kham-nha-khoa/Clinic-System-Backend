@@ -4,10 +4,9 @@ const Schedule = require("../models/schedule");
 const Account = require("../models/account");
 const Role = require("../models/role");
 const bcrypt = require("bcrypt");
+const uploadCloudinary = require("../middlewares/uploadCloudinary");
 
-class DoctorController {
-  // Tạo bác sĩ mới (tạo kèm Account nếu cần)
-  async createDoctor(req, res) {
+module.exports.createDoctor = async (req, res) => {
     try {
       const { name, specialtyId, phone, email, password, experience } = req.body;
 
@@ -30,12 +29,18 @@ class DoctorController {
 
       // Hash password
       const hashedPassword = await bcrypt.hash(password, 10);
-
+      // Lưu URL avatar nếu middleware multer-storage-cloudinary đã upload file
+      let avatarUrl = '';
+      if (req.file) {
+        const result = await uploadCloudinary(req.file.buffer);
+        avatarUrl = result.secure_url;
+      }
       // Tạo account mới cho bác sĩ
       const newAccount = new Account({
         email,
         password: hashedPassword,
         roleId: doctorRole._id, // Đính ID role bác sĩ
+        avatar: avatarUrl
       });
       const savedAccount = await newAccount.save();
 
@@ -62,9 +67,7 @@ class DoctorController {
     }
   }
 
-  // Lấy danh sách bác sĩ (lọc theo chuyên khoa, phân trang)
-  // [GET] /doctors
-  async getAllDoctors(req, res) {
+module.exports.getAllDoctors = async (req, res) => {
     try {
       const { specialtyId, name, page = 1, limit = 10 } = req.query;
       const filter = {};
@@ -78,7 +81,7 @@ class DoctorController {
       const [doctors, total] = await Promise.all([
         Doctor.find(filter)
           .populate("specialtyId", "name")
-          .populate("accountId", "email status")
+          .populate("accountId", "email status avatar")
           .skip((pageNumber - 1) * pageSize)
           .limit(pageSize),
         Doctor.countDocuments(filter),
@@ -103,12 +106,12 @@ class DoctorController {
   }
 
   //[GET] /doctors/:id
-  async getDoctorById(req, res) {
+  module.exports.getDoctorById = async (req, res) => {
     try {
       const { id } = req.params;
       const doctor = await Doctor.findById(id)
         .populate("specialtyId", "name")
-        .populate("accountId", "email status");
+        .populate("accountId", "email status avatar");
 
       if (!doctor)
         return res.status(404).json({ message: "Không tìm thấy bác sĩ" });
@@ -127,7 +130,7 @@ class DoctorController {
       });
     }
   }
-  async getDoctorsByIds(req, res) {
+  module.exports.getDoctorsByIds = async (req, res) => {
   try {
     const { ids } = req.body;  // matches frontend
     if (!ids || !Array.isArray(ids)) {
@@ -136,7 +139,7 @@ class DoctorController {
 
     const doctors = await Doctor.find({ _id: { $in: ids } })
       .populate("specialtyId", "name")
-      .populate("accountId", "email status");
+      .populate("accountId", "email status avatar");
 
     res.status(200).json({ message: "Lấy danh sách bác sĩ thành công", data: doctors });
   } catch (err) {
@@ -144,7 +147,7 @@ class DoctorController {
   }
 }
   // Cập nhật thông tin bác sĩ
-  async updateDoctor(req, res) {
+  module.exports.updateDoctor = async (req, res) => {
     try {
       const { id } = req.params;
       const updateData = req.body;
@@ -169,8 +172,7 @@ class DoctorController {
     }
   }
 
-  // Xóa bác sĩ
-  async deleteDoctor(req, res) {
+module.exports.deleteDoctor = async (req, res) => {
     try {
       const { id } = req.params;
       const doctor = await Doctor.findByIdAndDelete(id);
@@ -193,12 +195,12 @@ class DoctorController {
   }
 
   // Lọc bác sĩ theo chuyên khoa
-  async getDoctorsBySpecialty(req, res) {
+  module.exports.getDoctorsBySpecialty = async (req, res) => {
     try {
       const { specialtyId } = req.params;
       const doctors = await Doctor.find({ specialtyId })
         .populate("specialtyId", "name")
-        .populate("accountId", "email status");
+        .populate("accountId", "email status avatar");
 
       res.status(200).json({
         message: "Lấy danh sách bác sĩ theo chuyên khoa thành công",
@@ -212,7 +214,7 @@ class DoctorController {
       });
     }
   }
-  async searchDoctors(req, res) {
+  module.exports.searchDoctors = async (req, res) => {
     try {
       const { query, page = 1, limit = 10 } = req.query;
 
@@ -262,7 +264,7 @@ class DoctorController {
     }
   }
   // Lấy bác sĩ theo account id
-  async getDoctorByAccountId(req, res) {
+  module.exports.getDoctorByAccountId = async (req, res) => {
     try {
       const { accountId } = req.params;
       const doctor = await Doctor.findOne({ accountId })
@@ -284,6 +286,3 @@ class DoctorController {
       });
     }
   }
-}
-
-module.exports = new DoctorController();
