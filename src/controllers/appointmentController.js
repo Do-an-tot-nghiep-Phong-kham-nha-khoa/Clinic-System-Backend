@@ -80,44 +80,30 @@ module.exports.createByDoctor = async (req, res) => {
 
       await newAppointment.save();
 
-      // Cập nhật schedule
-      await Schedule.findOneAndUpdate(
-        { doctor_id, date: dateOnly, "timeSlots.startTime": timeSlot },
-        { $set: { "timeSlots.$.isBooked": true } },
+      // Cập nhật schedule: tìm bằng khoảng ngày giống lúc lấy schedule và match startTime (không match cả chuỗi timeSlot)
+      const updateResult = await Schedule.findOneAndUpdate(
+        { doctor_id, date: { $gte: startOfDay, $lte: endOfDay }, "timeSlots.startTime": slot.startTime },
+        { $set: { "timeSlots.$.isBooked": true, "timeSlots.$.appointment_id": newAppointment._id } },
         { new: true }
       );
+
+      // Nếu không update được bằng startTime chính xác, thử match bằng phần bắt đầu của timeSlot (normalize)
+      if (!updateResult) {
+        const fallback = await Schedule.findOneAndUpdate(
+          { doctor_id, date: { $gte: startOfDay, $lte: endOfDay }, "timeSlots.startTime": { $regex: `^${normalizedInput}` } },
+          { $set: { "timeSlots.$.isBooked": true, "timeSlots.$.appointment_id": newAppointment._id } },
+          { new: true }
+        );
+        console.log('Schedule update fallback result:', !!fallback);
+      } else {
+        console.log('Schedule updated for appointment slot:', slot.startTime);
+      }
 
       return res.status(201).json({
         message: 'Appointment booked successfully with doctor',
         appointment: newAppointment,
       });
     }
-
-    // // ==== 4. Nếu đặt theo chuyên khoa ====
-    // if (!specialty_id) {
-    //   return res.status(400).json({ message: 'specialty_id is required when booking by specialty' });
-    // }
-
-    // specialty = await Specialty.findById(specialty_id);
-    // if (!specialty) return res.status(404).json({ message: 'Specialty not found' });
-
-    // const newAppointment = new Appointment({
-    //   booker_id,
-    //   profile: profileId,
-    //   profileModel,
-    //   specialty_id: specialty._id,
-    //   appointmentDate,
-    //   timeSlot,
-    //   reason,
-    //   status: "waiting_assigned"
-    // });
-
-    // await newAppointment.save();
-
-    // return res.status(201).json({
-    //   message: 'Appointment booked successfully under specialty (waiting for doctor assignment)',
-    //   appointment: newAppointment,
-    // });
 
   } catch (error) {
     console.error('Error creating appointment:', error);
@@ -221,6 +207,19 @@ module.exports.updateStatus = async (req, res) => {
   }
 };
 
+// [PUT] /appointments/:id
+module.exports.updateAppointment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+    const updatedAppointment = await Appointment.findByIdAndUpdate(id, updateData, { new: true });
+    if (!updatedAppointment) return res.status(404).json({ message: 'Appointment not found' });
+    res.status(200).json({ message: 'Appointment updated successfully', appointment: updatedAppointment });
+  } catch (error) {
+    console.error('Error updating appointment:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
 // [GET] /appointments
 module.exports.getAllAppointments = async (req, res) => {
   try {
@@ -409,6 +408,21 @@ module.exports.createBySpecialty = async (req, res) => {
   } catch (error) {
     console.error("Error creating appointment by specialty:", error);
     return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+module.exports.deleteAppointment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const appointment = await Appointment.findByIdAndDelete(id);
+    if (!appointment) {
+      return res.status(404).json({ message: 'Appointment not found' });
+    }
+
+    res.status(200).json({ message: 'Appointment deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting appointment:', error);
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
 
