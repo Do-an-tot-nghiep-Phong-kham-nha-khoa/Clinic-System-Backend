@@ -1,10 +1,9 @@
 const express = require("express");
 const doctorController = require("../controllers/doctorController");
-
+const uploadMemory = require("../middlewares/uploadMemory");
 const router = express.Router();
-
 // Tạo bác sĩ mới
-router.post("/", doctorController.createDoctor);
+router.post("/", uploadMemory.single('avatar'), doctorController.createDoctor);
 
 // Lấy danh sách tất cả bác sĩ
 router.get("/", doctorController.getAllDoctors);
