@@ -274,11 +274,29 @@ module.exports.updateAccount = async (req, res) => {
 module.exports.deleteAccount = async (req, res) => {
   try {
     const { id } = req.params;
-    const deletedAccount = await Account.findOneAndUpdate(
-      { _id: id, deleted: false },
-      { deleted: true },
-      { new: true }
-    );
+    //Delete account from database
+    const Role = require('../models/role');
+    const roleId = (await Account.findById(id).populate('roleId')).roleId._id;
+    const roleName = (await Role.findById(roleId)).name;
+
+    if (roleName === 'patient') {
+      //Delete patient profile if the account is a patient
+      await Patient.deleteOne({ accountId: id });
+    } 
+    else if (roleName === 'doctor') {
+      //Delete doctor profile if the account is a doctor
+      const Doctor = require('../models/doctor');
+      await Doctor.deleteOne({ accountId: id });
+    } 
+    else if (roleName === 'receptionist') {
+      const Receptionist = require('../models/receptionist');
+      await Receptionist.deleteOne({ accountId: id });
+    } 
+    else if (roleName === 'admin') {
+      const Admin = require('../models/admin');
+      await Admin.deleteOne({ accountId: id });
+    }
+    const deletedAccount = await Account.findOneAndDelete({ _id: id });
     if (!deletedAccount) return res.status(404).json({ message: "Tài khoản không tồn tại!" });
     return res.status(200).json({ message: "Xóa tài khoản thành công!", account: deletedAccount });
   } catch (error) {
