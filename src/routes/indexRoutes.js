@@ -15,8 +15,10 @@ const familyMemberRoutes = require('./familyMemberRoutes');
 const treatmentRoutes = require('./treatmentRoutes');
 const roleRoutes = require('./roleRoutes');
 const authenticate = require('../middlewares/authenticate');
-const authorize = require('../middlewares/authorize');
 const adminRoutes = require('./adminRoutes');
+const authorize = require('../middlewares/authorize');
+const statsRoutes = require('./statsRoutes');
+
 module.exports = (app) => {
     app.use('/patients', patientsRoutes);
     app.use('/appointments', authenticate.authenticate, authorize.authorize('appointment'), appointmentsRoutes);
@@ -33,6 +35,7 @@ module.exports = (app) => {
     app.use('/receptionists', receptionistRoutes);
     app.use('/family-members', familyMemberRoutes);
     app.use('/treatments', treatmentRoutes);
-    app.use('/admin/roles', roleRoutes);
     app.use('/admins', adminRoutes);
+    app.use('/admin/roles', roleRoutes);
+    app.use('/stats', statsRoutes)
 }

@@ -126,6 +126,74 @@ exports.list = async (req, res) => {
     }
 };
 
+// GET /api/prescriptions/:id
+exports.getById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({ message: 'Invalid prescription ID' });
+        }
+
+        const prescription = await Prescription.findById(id)
+            .populate({
+                path: 'items.medicineId',
+                model: 'Medicine',
+                select: 'name price manufacturer unit expiryDate'
+            })
+            .populate({
+                path: 'healthProfile_id',
+                select: 'ownerId ownerModel'
+            })
+            .lean();
+
+        if (!prescription) {
+            return res.status(404).json({ message: 'Prescription not found' });
+        }
+
+        // Resolve owner_detail like list
+        let owner_detail = null;
+        const hp = prescription.healthProfile_id;
+        if (hp && hp.ownerId && hp.ownerModel) {
+            if (hp.ownerModel === 'Patient') {
+                const p = await Patient.findById(hp.ownerId).select('name dob phone gender').lean();
+                if (p) owner_detail = { name: p.name, dob: p.dob, phone: p.phone, gender: p.gender };
+            } else if (hp.ownerModel === 'FamilyMember') {
+                const fm = await FamilyMember.findById(hp.ownerId).select('name dob phone gender').lean();
+                if (fm) owner_detail = { name: fm.name, dob: fm.dob, phone: fm.phone, gender: fm.gender };
+            }
+        }
+
+        const response = {
+            id: prescription._id,
+            createAt: prescription.createAt,
+            healthProfile_id: hp?._id || null,
+            owner_detail,
+            totalPrice: prescription.totalPrice || 0,
+            items: (prescription.items || []).map(item => ({
+                quantity: item.quantity,
+                dosage: item.dosage,
+                frequency: item.frequency,
+                duration: item.duration,
+                instruction: item.instruction,
+                medicineId: item.medicineId ? item.medicineId._id : null,
+                medicine: item.medicineId ? {
+                    _id: item.medicineId._id,
+                    name: item.medicineId.name,
+                    price: item.medicineId.price,
+                    manufacturer: item.medicineId.manufacturer,
+                    unit: item.medicineId.unit,
+                    expiryDate: item.medicineId.expiryDate,
+                } : null
+            }))
+        };
+
+        res.json(response);
+    } catch (error) {
+        console.error('Error fetching prescription by ID:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 // POST /api/prescriptions
 exports.create = async (req, res) => {
     const session = await mongoose.startSession();

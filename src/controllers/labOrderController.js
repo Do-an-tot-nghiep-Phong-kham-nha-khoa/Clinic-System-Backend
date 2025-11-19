@@ -117,6 +117,69 @@ exports.list = async (req, res) => {
     }
 };
 
+// GET /api/laborders/:id
+exports.getById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({ message: 'Invalid labOrder ID' });
+        }
+
+        const labOrder = await LabOrder.findById(id)
+            .populate({
+                path: 'items.serviceId',
+                model: 'Service',
+                select: 'name description price',
+            })
+            .populate({
+                path: 'healthProfile_id',
+                model: 'HealthProfile',
+                select: 'ownerId ownerModel'
+            })
+            .lean();
+
+        if (!labOrder) {
+            return res.status(404).json({ message: 'Lab Order not found' });
+        }
+
+        // Resolve owner_detail like list
+        let owner_detail = null;
+        const hp = labOrder.healthProfile_id;
+        if (hp && hp.ownerId && hp.ownerModel) {
+            if (hp.ownerModel === 'Patient') {
+                const p = await Patient.findById(hp.ownerId).select('name dob phone gender').lean();
+                if (p) owner_detail = { name: p.name, dob: p.dob, phone: p.phone, gender: p.gender };
+            } else if (hp.ownerModel === 'FamilyMember') {
+                const fm = await FamilyMember.findById(hp.ownerId).select('name dob phone gender').lean();
+                if (fm) owner_detail = { name: fm.name, dob: fm.dob, phone: fm.phone, gender: fm.gender };
+            }
+        }
+
+        const response = {
+            _id: labOrder._id,
+            testTime: labOrder.testTime,
+            totalPrice: labOrder.totalPrice,
+            healthProfile_id: hp?._id || null,
+            owner_detail,
+            items: Array.isArray(labOrder.items) ? labOrder.items.filter(it => it && it.serviceId).map(item => ({
+                quantity: item.quantity,
+                description: item.description,
+                serviceId: item.serviceId?._id || null,
+                service: item.serviceId ? {
+                    _id: item.serviceId._id,
+                    name: item.serviceId.name,
+                    description: item.serviceId.description,
+                    price: item.serviceId.price
+                } : null
+            })) : []
+        };
+
+        res.json(response);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 // POST /api/laborders
 exports.create = async (req, res) => {
     try {

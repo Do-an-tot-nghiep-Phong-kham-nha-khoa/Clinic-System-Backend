@@ -1,4 +1,3 @@
-// filepath: d:\Code Project\Web\DoAn\Clinic-System-Backend\src\controllers\invoiceController.js
 const mongoose = require('mongoose');
 const Invoice = require('../models/invoice');
 const Prescription = require('../models/prescription');
@@ -289,6 +288,7 @@ exports.getById = async (req, res) => {
                 items: Array.isArray(invoice.prescriptionId.items) ? invoice.prescriptionId.items.map(item => ({
                     _id: item._id,
                     medicineId: item.medicineId ? item.medicineId._id : null,
+                    quantity: item.quantity,
                     medicine: item.medicineId,
                 })) : []
             } : null,
