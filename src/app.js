@@ -1,4 +1,6 @@
 const dotenv = require("dotenv");
+// Load .env immediately so any required modules (routes/middlewares) can read process.env
+dotenv.config();
 const express = require("express");
 const cors = require("cors");
 const database = require("../config/database.js");
@@ -15,8 +17,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// load env and connect database
-dotenv.config();
+// connect database (env already loaded above)
 database.connect();
 
 indexRoutes(app);

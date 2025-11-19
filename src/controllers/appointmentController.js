@@ -80,44 +80,30 @@ module.exports.createByDoctor = async (req, res) => {
 
       await newAppointment.save();
 
-      // Cập nhật schedule
-      await Schedule.findOneAndUpdate(
-        { doctor_id, date: dateOnly, "timeSlots.startTime": timeSlot },
-        { $set: { "timeSlots.$.isBooked": true } },
+      // Cập nhật schedule: tìm bằng khoảng ngày giống lúc lấy schedule và match startTime (không match cả chuỗi timeSlot)
+      const updateResult = await Schedule.findOneAndUpdate(
+        { doctor_id, date: { $gte: startOfDay, $lte: endOfDay }, "timeSlots.startTime": slot.startTime },
+        { $set: { "timeSlots.$.isBooked": true, "timeSlots.$.appointment_id": newAppointment._id } },
         { new: true }
       );
+
+      // Nếu không update được bằng startTime chính xác, thử match bằng phần bắt đầu của timeSlot (normalize)
+      if (!updateResult) {
+        const fallback = await Schedule.findOneAndUpdate(
+          { doctor_id, date: { $gte: startOfDay, $lte: endOfDay }, "timeSlots.startTime": { $regex: `^${normalizedInput}` } },
+          { $set: { "timeSlots.$.isBooked": true, "timeSlots.$.appointment_id": newAppointment._id } },
+          { new: true }
+        );
+        console.log('Schedule update fallback result:', !!fallback);
+      } else {
+        console.log('Schedule updated for appointment slot:', slot.startTime);
+      }
 
       return res.status(201).json({
         message: 'Appointment booked successfully with doctor',
         appointment: newAppointment,
       });
     }
-
-    // // ==== 4. Nếu đặt theo chuyên khoa ====
-    // if (!specialty_id) {
-    //   return res.status(400).json({ message: 'specialty_id is required when booking by specialty' });
-    // }
-
-    // specialty = await Specialty.findById(specialty_id);
-    // if (!specialty) return res.status(404).json({ message: 'Specialty not found' });
-
-    // const newAppointment = new Appointment({
-    //   booker_id,
-    //   profile: profileId,
-    //   profileModel,
-    //   specialty_id: specialty._id,
-    //   appointmentDate,
-    //   timeSlot,
-    //   reason,
-    //   status: "waiting_assigned"
-    // });
-
-    // await newAppointment.save();
-
-    // return res.status(201).json({
-    //   message: 'Appointment booked successfully under specialty (waiting for doctor assignment)',
-    //   appointment: newAppointment,
-    // });
 
   } catch (error) {
     console.error('Error creating appointment:', error);
@@ -436,6 +422,87 @@ module.exports.deleteAppointment = async (req, res) => {
     res.status(200).json({ message: 'Appointment deleted successfully' });
   } catch (error) {
     console.error('Error deleting appointment:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// [PUT] /appointments/:id/cancel
+module.exports.cancelAppointment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const appointment = await Appointment.findById(id);
+    if (!appointment) {
+      return res.status(404).json({ message: 'Appointment not found' });
+    }
+    appointment.status = 'cancelled';
+    await appointment.save();
+    res.status(200).json({ message: 'Appointment cancelled successfully', appointment });
+  } catch (error) {
+    console.error('Error cancelling appointment:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// [GET] /appointments/doctor/:id/today
+module.exports.getAppointmentsByDoctorToday = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.query;
+
+    // Get today's date range (start and end of day)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const filter = {
+      doctor_id: id,
+      appointmentDate: { $gte: today, $lt: tomorrow }
+    };
+    if (status) filter.status = status;
+
+    let appointments = await Appointment.find(filter)
+      .populate('healthProfile_id specialty_id')
+      .sort({ timeSlot: 1 }); // Sort by time slot for today's schedule
+
+    if (!appointments.length) {
+      return res.status(200).json({
+        message: 'No appointments found for this doctor today',
+        count: 0,
+        appointments: []
+      });
+    }
+
+    // Append owner info (Patient or FamilyMember)
+    const final = await Promise.all(
+      appointments.map(async (app) => {
+        const hp = app.healthProfile_id;
+
+        if (!hp || !hp.ownerId || !hp.ownerModel) return app.toObject();
+
+        let owner;
+        if (hp.ownerModel === "Patient") {
+          owner = await Patient.findById(hp.ownerId)
+            .select("name dob phone gender");
+        } else if (hp.ownerModel === "FamilyMember") {
+          owner = await FamilyMember.findById(hp.ownerId)
+            .select("name dob phone gender");
+        }
+
+        return {
+          ...app.toObject(),
+          healthProfile_id: {
+            ...hp.toObject(),
+            owner_detail: owner || null
+          }
+        };
+      })
+    );
+
+    res.status(200).json({ count: final.length, appointments: final });
+
+  } catch (error) {
+    console.error('Error fetching doctor appointments for today:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };

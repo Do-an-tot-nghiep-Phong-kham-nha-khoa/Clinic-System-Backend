@@ -10,6 +10,7 @@ const accountSchema = new mongoose.Schema({
         type: String,
         default: "active"
     },
+    avatar: {type: String, default: ""},
     deleted: {
         type: Boolean,
         default: false

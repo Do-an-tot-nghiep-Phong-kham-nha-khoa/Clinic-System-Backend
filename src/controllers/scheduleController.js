@@ -186,3 +186,147 @@ module.exports.createSchedule = async (req, res) => {
         return res.status(500).json({ message: "Error creating schedule", error });
     }
 };
+
+// [PUT] /schedules/slot/:slotId
+module.exports.updateDoctorScheduleSlot = async (req, res) => {
+    try {
+        const { slotId } = req.params;
+        const { isBooked } = req.body;
+
+        // Validate required fields
+        if (typeof isBooked !== 'boolean') {
+            return res.status(400).json({
+                message: 'isBooked field is required and must be a boolean'
+            });
+        }
+
+        // Find the schedule that contains this slot
+        const schedule = await Schedule.findOne({
+            'timeSlots._id': slotId
+        });
+
+        if (!schedule) {
+            return res.status(404).json({
+                message: 'Time slot not found'
+            });
+        }
+
+        // Find and update the specific slot
+        const slot = schedule.timeSlots.id(slotId);
+        if (!slot) {
+            return res.status(404).json({
+                message: 'Time slot not found in schedule'
+            });
+        }
+
+        slot.isBooked = isBooked;
+        await schedule.save();
+
+        return res.status(200).json({
+            message: 'Time slot updated successfully',
+            slot: {
+                _id: slot._id,
+                startTime: slot.startTime,
+                endTime: slot.endTime,
+                isBooked: slot.isBooked
+            }
+        });
+
+    } catch (error) {
+        console.error('Error updating time slot:', error);
+        return res.status(500).json({
+            message: 'Error updating time slot',
+            error: error.message
+        });
+    }
+};
+
+// [PUT] /schedules/:scheduleId
+module.exports.updateDoctorSchedule = async (req, res) => {
+    try {
+        const { scheduleId } = req.params;
+        const { date, timeSlots } = req.body;
+
+        // Validate scheduleId
+        if (!scheduleId) {
+            return res.status(400).json({ message: 'Schedule ID is required' });
+        }
+
+        // Find the schedule
+        const schedule = await Schedule.findById(scheduleId);
+        if (!schedule) {
+            return res.status(404).json({ message: 'Schedule not found' });
+        }
+
+        // Prepare update object
+        const updates = {};
+        if (date) updates.date = new Date(date);
+        if (timeSlots && Array.isArray(timeSlots)) {
+            // Validate timeSlots structure
+            for (const slot of timeSlots) {
+                if (!slot.startTime || !slot.endTime) {
+                    return res.status(400).json({
+                        message: 'Each time slot must have startTime and endTime'
+                    });
+                }
+            }
+            updates.timeSlots = timeSlots;
+        }
+
+        // Check if there are any updates
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({ message: 'No valid fields to update' });
+        }
+
+        // Apply updates
+        Object.assign(schedule, updates);
+        await schedule.save();
+
+        return res.status(200).json({
+            message: 'Schedule updated successfully',
+            schedule
+        });
+
+    } catch (error) {
+        console.error('Error updating schedule:', error);
+        return res.status(500).json({
+            message: 'Error updating schedule',
+            error: error.message
+        });
+    }
+};
+
+// [DELETE] /schedules/:scheduleId
+module.exports.deleteDoctorSchedule = async (req, res) => {
+    try {
+        const { scheduleId } = req.params;
+
+        // Validate scheduleId
+        if (!scheduleId) {
+            return res.status(400).json({ message: 'Schedule ID is required' });
+        }
+
+        // Find and delete the schedule
+        const schedule = await Schedule.findByIdAndDelete(scheduleId);
+
+        if (!schedule) {
+            return res.status(404).json({ message: 'Schedule not found' });
+        }
+
+        return res.status(200).json({
+            message: 'Schedule deleted successfully',
+            deletedSchedule: {
+                _id: schedule._id,
+                doctor_id: schedule.doctor_id,
+                date: schedule.date
+            }
+        });
+
+    } catch (error) {
+        console.error('Error deleting schedule:', error);
+        return res.status(500).json({
+            message: 'Error deleting schedule',
+            error: error.message
+        });
+    }
+};
