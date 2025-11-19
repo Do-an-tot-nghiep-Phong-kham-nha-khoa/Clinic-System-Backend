@@ -34,13 +34,15 @@ module.exports.getDoctorScheduleByDate = async (req, res) => {
 module.exports.getAvailableTimeSlotsBySpecialty = async (req, res) => {
     try {
         const { specialty_id, date } = req.params;
-        // console.log('Fetching available slots for specialty:', specialty_id, 'on date:', date);
         // Step 1: find all doctors of this specialty
         const doctors = await Doctor.find({ specialtyId: specialty_id });
         // console.log('Found doctors:', doctors);
         if (doctors.length === 0) {
             return res.status(404).json({ message: "No doctors found for this specialty" });
         }
+
+        // Create a map for doctor names
+        const doctorMap = new Map(doctors.map(d => [d._id.toString(), d.name]));
 
         const doctorIds = doctors.map(d => d._id);
 
@@ -105,6 +107,11 @@ module.exports.getAvailableTimeSlotsBySpecialty = async (req, res) => {
         if (shift === 'afternoon') {
             final = sorted.filter(r => !isMorning(r.startTime));
         }
+
+        // Add doctor_names to each slot
+        final.forEach(slot => {
+            slot.doctor_names = slot.doctor_ids.map(id => doctorMap.get(id) || 'Unknown');
+        });
 
         return res.status(200).json(final);
 
