@@ -1,18 +1,22 @@
 // controllers/doctor.controller.js
+const mongoose = require("mongoose");
 const Doctor = require("../models/doctor");
 const Schedule = require("../models/schedule");
 const Account = require("../models/account");
 const Role = require("../models/role");
+const Specialty = require("../models/specialty");
 const bcrypt = require("bcrypt");
 const uploadCloudinary = require("../middlewares/uploadCloudinary");
 
 module.exports.createDoctor = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
-      const { name, specialtyId, phone, email, password, experience } = req.body;
+      const { name, specialtyName, phone, email, password, experience, avatar } = req.body;
 
-      if (!name || !specialtyId || !email || !password) {
+      if (!name || !specialtyName || !email || !password) {
         return res.status(400).json({
-          message: "Thiếu thông tin bắt buộc: name, specialtyId, email, password",
+          message: "Thiếu thông tin bắt buộc: name, specialtyName, email, password",
         });
       }
 
@@ -25,6 +29,12 @@ module.exports.createDoctor = async (req, res) => {
       const doctorRole = await Role.findOne({ name: 'doctor' });
       if (!doctorRole) {
         return res.status(500).json({ message: "Role doctor chưa được cấu hình trong hệ thống!" });
+      }
+
+      // Tìm specialtyId trước khi bắt đầu transaction
+      const specialty = await Specialty.findOne({ name: specialtyName });
+      if (!specialty) {
+        return res.status(400).json({ message: "Chuyên khoa không hợp lệ" });
       }
 
       // Hash password
@@ -42,23 +52,31 @@ module.exports.createDoctor = async (req, res) => {
         roleId: doctorRole._id, // Đính ID role bác sĩ
         avatar: avatarUrl
       });
-      const savedAccount = await newAccount.save();
+      const savedAccount = await newAccount.save({ session });
 
       // Tạo doctor record
       const newDoctor = new Doctor({
         accountId: savedAccount._id,
         name,
-        specialtyId,
+        specialtyId: specialty._id,
         phone,
         experience,
+        avatar: avatarUrl
       });
-      const savedDoctor = await newDoctor.save();
+      const savedDoctor = await newDoctor.save({ session });
+
+      // Commit transaction
+      await session.commitTransaction();
+      session.endSession();
 
       res.status(201).json({
         message: "Tạo bác sĩ thành công",
         data: savedDoctor,
       });
     } catch (err) {
+      // Abort transaction on error
+      await session.abortTransaction();
+      session.endSession();
       console.error("Error creating doctor:", err);
       res.status(500).json({
         message: "Lỗi khi tạo bác sĩ",
