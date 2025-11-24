@@ -243,13 +243,19 @@ module.exports.getAllAppointments = async (req, res) => {
   }
 };
 
-// [GET] /appointments/doctor/:id
+// [GET] /appointments/doctor/:accountId
 module.exports.getAppointmentsByDoctor = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { accountId } = req.params;
     const { date, status } = req.query;
 
-    const filter = { doctor_id: id };
+    // Find doctor by account ID
+    const doctor = await Doctor.findOne({ accountId: accountId });
+    if (!doctor) {
+      return res.status(404).json({ message: 'Doctor not found for this account' });
+    }
+
+    const filter = { doctor_id: doctor._id };
     if (date) filter.appointmentDate = new Date(date);
     if (status) filter.status = status;
 
@@ -295,13 +301,19 @@ module.exports.getAppointmentsByDoctor = async (req, res) => {
 };
 
 
-// [GET] /appointments/booker/:id
+// [GET] /appointments/booker/:accountId
 module.exports.getAppointmentsByBooker = async (req, res) => {
   try {
-    const { id } = req.params; // booker_id
+    const { accountId } = req.params; // account_id
     const { date, status } = req.query;
 
-    const filter = { booker_id: id };
+    // Find patient by account ID
+    const patient = await Patient.findOne({ accountId: accountId });
+    if (!patient) {
+      return res.status(404).json({ message: 'Patient not found for this account' });
+    }
+
+    const filter = { booker_id: patient._id };
     if (date) filter.appointmentDate = new Date(date);
     if (status) filter.status = status;
 
@@ -443,11 +455,34 @@ module.exports.cancelAppointment = async (req, res) => {
   }
 };
 
-// [GET] /appointments/doctor/:id/today
-module.exports.getAppointmentsByDoctorToday = async (req, res) => {
+// [PUT] /appointments/:id/confirm
+module.exports.confirmAppointment = async (req, res) => {
   try {
     const { id } = req.params;
+    const appointment = await Appointment.findById(id);
+    if (!appointment) {
+      return res.status(404).json({ message: 'Appointment not found' });
+    }
+    appointment.status = 'confirmed';
+    await appointment.save();
+    res.status(200).json({ message: 'Appointment confirmed successfully', appointment });
+  } catch (error) {
+    console.error('Error confirming appointment:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// [GET] /appointments/doctor/:accountId/today
+module.exports.getAppointmentsByDoctorToday = async (req, res) => {
+  try {
+    const { accountId } = req.params;
     const { status } = req.query;
+
+    // Find doctor by account ID
+    const doctor = await Doctor.findOne({ accountId: accountId });
+    if (!doctor) {
+      return res.status(404).json({ message: 'Doctor not found for this account' });
+    }
 
     // Get today's date range (start and end of day)
     const today = new Date();
@@ -456,7 +491,7 @@ module.exports.getAppointmentsByDoctorToday = async (req, res) => {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const filter = {
-      doctor_id: id,
+      doctor_id: doctor._id,
       appointmentDate: { $gte: today, $lt: tomorrow }
     };
     if (status) filter.status = status;
