@@ -45,7 +45,21 @@ module.exports.register = async (req, res) => {
     try {
       await newPatient.save();
     } catch (err) {
+      // Nếu tạo patient lỗi, rollback account đã tạo
       await Account.deleteOne({ _id: newAccount._id });
+
+      // Kiểm tra lỗi duplicate key (ví dụ số điện thoại đã tồn tại)
+      if (err && err.code === 11000) {
+        const key = Object.keys(err.keyValue || {})[0];
+        if (key === 'phone') {
+          return res.status(400).json({ message: 'Số điện thoại đã được sử dụng!' });
+        }
+        if (key === 'accountId') {
+          return res.status(400).json({ message: 'Account đã tồn tại!' });
+        }
+        return res.status(400).json({ message: `${key || 'Trường'} đã tồn tại!` });
+      }
+
       throw err;
     }
 
@@ -192,8 +206,8 @@ module.exports.resetPasswordPost = async (req, res) => {
       return res.status(400).json({ message: "Token không hợp lệ cho hành động này!" });
     }
 
-    if (!password || password.length < 8) {
-      return res.status(400).json({ message: "Mật khẩu phải ít nhất 8 ký tự!" });
+    if (!password || password.length < 6) {
+      return res.status(400).json({ message: "Mật khẩu phải ít nhất 6 ký tự!" });
     }
 
     const hashed = await bcrypt.hash(password, 10);
