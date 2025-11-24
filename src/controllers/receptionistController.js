@@ -128,12 +128,25 @@ module.exports.deletedReceptionist = async (req, res) => {
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ message: "Invalid receptionist id format" });
         }
+        // Tạo transaction để xoá cả receptionist và account liên quan
+        const session = await mongoose.startSession();
+        session.startTransaction();
+        try {
+            // Xoá receptionist
+            const deletedReceptionist = await Receptionist.findByIdAndDelete(id);
 
-        const deletedReceptionist = await Receptionist.findByIdAndDelete(id);
-
-        if (!deletedReceptionist) {
-            return res.status(404).json({ message: "Receptionist not found" });
+            if (!deletedReceptionist) {
+                return res.status(404).json({ message: "Receptionist not found" });
+            }
+            // Xoá luôn account liên quan
+            await Account.findByIdAndDelete(deletedReceptionist.accountId);
+        } catch (error) {
+            await session.abortTransaction();
+            session.endSession();
+            throw error;
         }
+        await session.commitTransaction();
+        session.endSession();
 
         return res.json({ message: "Receptionist deleted successfully" });
     } catch (error) {
