@@ -442,7 +442,13 @@ class TreatmentController {
 
   async getTreatmentsByBooker(req, res) {
     try {
-      const { id } = req.params; // booker_id (Patient ID)
+      const { accountId } = req.params; // account_id
+
+      // Find patient by account ID
+      const patient = await Patient.findOne({ accountId: accountId });
+      if (!patient) {
+        return res.status(404).json({ message: 'Patient not found for this account' });
+      }
 
       // Lấy các param phân trang + sắp xếp
       const paging = getPagingParams(req.query, {
@@ -460,8 +466,8 @@ class TreatmentController {
         if (req.query.to) filter.treatmentDate.$lte = new Date(req.query.to);
       }
 
-      // Tìm danh sách appointment của booker
-      const appointments = await Appointment.find({ booker_id: id }).select("_id");
+      // Tìm danh sách appointment của booker (sử dụng patient._id)
+      const appointments = await Appointment.find({ booker_id: patient._id }).select("_id");
 
       if (!appointments.length)
         return res.status(404).json({ message: "No treatments found for this patient" });
