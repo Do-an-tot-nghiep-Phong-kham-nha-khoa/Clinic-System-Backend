@@ -58,7 +58,7 @@ module.exports = {
     // POST /admins
     createAdmin: async (req, res) => {
         try {
-            const { email, password, name, phone, note, avatar } = req.body;
+            const { email, password, name, phone } = req.body;
             if (!name || !email || !password) {
                 return res.status(400).json({ message: "Missing required fields: name, email, password" });
             }
@@ -77,8 +77,6 @@ module.exports = {
                 accountId: savedAccount._id,
                 name,
                 phone,
-                avatar,
-                note
             });
             const savedAdmin = await newAdmin.save();
 
