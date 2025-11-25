@@ -29,8 +29,38 @@ exports.list = async (req, res) => {
             ...(query.status && { status: query.status })
         };
 
+        // Handle search by patient name
+        let searchConditions = conditions;
+        if (query.q && query.q.trim()) {
+            const searchTerm = query.q.trim();
+            // Tìm patients và family members có tên chứa searchTerm
+            const [patients, familyMembers] = await Promise.all([
+                Patient.find({ name: { $regex: searchTerm, $options: 'i' } }).select('_id').lean(),
+                FamilyMember.find({ name: { $regex: searchTerm, $options: 'i' } }).select('_id').lean()
+            ]);
+
+            const patientIds = patients.map(p => p._id);
+            const familyMemberIds = familyMembers.map(fm => fm._id);
+
+            // Tìm health profiles tương ứng
+            const healthProfiles = await HealthProfile.find({
+                $or: [
+                    { ownerModel: 'Patient', ownerId: { $in: patientIds } },
+                    { ownerModel: 'FamilyMember', ownerId: { $in: familyMemberIds } }
+                ]
+            }).select('_id').lean();
+
+            const healthProfileIds = healthProfiles.map(hp => hp._id);
+
+            // Thêm điều kiện search vào conditions
+            searchConditions = {
+                ...conditions,
+                healthProfile_id: { $in: healthProfileIds }
+            };
+        }
+
         // 1. Tạo Query với Populate
-        let dataQuery = Invoice.find(conditions)
+        let dataQuery = Invoice.find(searchConditions)
             // 2. **Populate các trường liên quan**
             .populate({
                 path: 'prescriptionId',
@@ -65,26 +95,16 @@ exports.list = async (req, res) => {
             })
             .lean(); // Luôn sử dụng .lean() để tăng hiệu suất
 
-        const searchFields = ['_id', 'status']; // Có thể thêm các trường khác của Invoice
-        const search = buildSearchFilter(query, searchFields);
-
-        if (Object.keys(search).length && search.$or) {
-            // Áp dụng điều kiện tìm kiếm trực tiếp cho Invoice
-            dataQuery = dataQuery.where(search);
-        }
-
         // 3. **Áp dụng Sorting và Paging** 
         dataQuery = dataQuery
             // Sử dụng paging.sort 
             .sort(paging.sort)
             .skip(paging.skip)
-            .limit(paging.limit);
-
-        // 4. Execute queries in parallel
+            .limit(paging.limit);        // 4. Execute queries in parallel
         const [data, total] = await Promise.all([
             dataQuery.exec(),
-            // Count tổng số bản ghi khớp điều kiện
-            Invoice.countDocuments(conditions)
+            // Count tổng số bản ghi khớp điều kiện (sử dụng searchConditions thay vì conditions)
+            Invoice.countDocuments(searchConditions)
         ]);
 
         // Resolve owner details in parallel for performance
