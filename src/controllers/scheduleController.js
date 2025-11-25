@@ -163,6 +163,17 @@ module.exports.createSchedule = async (req, res) => {
             return res.status(400).json({ message: "Missing required fields" });
         }
 
+        // Check if the date is in the past
+        const scheduleDate = new Date(date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Set to start of today
+
+        if (scheduleDate < today) {
+            return res.status(400).json({
+                message: "Cannot create schedule for past dates"
+            });
+        }
+
         // prevent duplicate schedule for same doctor/date
         const existed = await Schedule.findOne({ doctor_id, date });
         if (existed) {
