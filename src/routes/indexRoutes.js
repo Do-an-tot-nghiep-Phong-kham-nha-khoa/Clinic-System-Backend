@@ -20,13 +20,13 @@ const authorize = require('../middlewares/authorize');
 const statsRoutes = require('./statsRoutes');
 
 module.exports = (app) => {
-    app.use('/patients', patientsRoutes);
+    app.use('/patients', authenticate.authenticate, authorize.authorize('patient'), patientsRoutes);
     app.use('/appointments', authenticate.authenticate, authorize.authorize('appointment'), appointmentsRoutes);
     app.use('/services', servicesRoutes);
     app.use('/medicines', medicineRoutes);
     app.use('/laborders', labOrderRoutes);
     app.use('/prescriptions', prescriptionRoutes);
-    app.use('/invoices', invoiceRoutes);
+    app.use('/invoices', authenticate.authenticate, authorize.authorize('invoice'), invoiceRoutes);
     app.use('/doctors', doctorRoutes);
     app.use('/accounts', accountRoutes);
     app.use('/health-profiles', healthProfileRoutes);
