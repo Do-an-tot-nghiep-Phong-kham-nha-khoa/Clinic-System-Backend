@@ -98,9 +98,9 @@ module.exports.login = async (req, res) => {
 
     const tokenUser = generateHelper.generateJWTToken(account);
     res.cookie("tokenUser", tokenUser, {
-      httpOnly: false,
-      secure: false,
-      sameSite: 'lax',
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
     });
     return res.status(200).json({
       message: "Đăng nhập thành công!",
