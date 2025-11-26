@@ -223,7 +223,9 @@ module.exports.updateAppointment = async (req, res) => {
 // [GET] /appointments
 module.exports.getAllAppointments = async (req, res) => {
   try {
-    const { doctor_id, booker_id, status, date, specialty_id } = req.query;
+    const { doctor_id, booker_id, status, date, specialty_id, page, limit } = req.query;
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 10;
 
     const filter = {};
     if (doctor_id) filter.doctor_id = doctor_id;
@@ -232,11 +234,24 @@ module.exports.getAllAppointments = async (req, res) => {
     if (status) filter.status = status;
     if (date) filter.appointmentDate = new Date(date);
 
-    const appointments = await Appointment.find(filter)
-      .populate('doctor_id specialty_id booker_id')
-      .sort({ appointmentDate: 1 });
+    const [appointments, total] = await Promise.all([
+      Appointment.find(filter)
+        .populate('doctor_id specialty_id booker_id')
+        .sort({ appointmentDate: 1 })
+        .skip((pageNumber - 1) * limitNumber)
+        .limit(limitNumber),
+      Appointment.countDocuments(filter),
+    ]);
 
-    res.status(200).json({ count: appointments.length, appointments });
+    res.status(200).json({
+      data: appointments,
+      meta: {
+        page: pageNumber,
+        limit: limitNumber,
+        total,
+        totalPages: Math.ceil(total / limitNumber),
+      },
+    });
   } catch (error) {
     console.error('Error fetching appointments:', error);
     res.status(500).json({ message: 'Internal server error' });
