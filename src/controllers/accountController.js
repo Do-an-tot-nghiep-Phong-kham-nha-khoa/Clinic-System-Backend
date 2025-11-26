@@ -187,7 +187,7 @@ module.exports.otpPasswordPost = async (req, res) => {
 // [POST] /accounts/password/reset
 module.exports.resetPasswordPost = async (req, res) => {
   try {
-    const { password } = req.body;
+    const { newPassword, confirmPassword } = req.body;
     const token = req.cookies.tokenUser;
     if (!token) return res.status(401).json({ message: "Thiếu token xác thực!" });
 
@@ -206,11 +206,11 @@ module.exports.resetPasswordPost = async (req, res) => {
       return res.status(400).json({ message: "Token không hợp lệ cho hành động này!" });
     }
 
-    if (!password || password.length < 6) {
+    if (!newPassword || newPassword.length < 6) {
       return res.status(400).json({ message: "Mật khẩu phải ít nhất 6 ký tự!" });
     }
 
-    const hashed = await bcrypt.hash(password, 10);
+    const hashed = await bcrypt.hash(newPassword, 10);
     await Account.updateOne({ _id: decoded.id }, { password: hashed });
 
     // Xoá cookie để buộc login lại
