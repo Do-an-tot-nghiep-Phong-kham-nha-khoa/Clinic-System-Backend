@@ -8,8 +8,14 @@ const cookieParser = require("cookie-parser");
 const indexRoutes = require("./routes/indexRoutes.js");
 const app = express();
 
+const allowedOrigins = [
+  'http://localhost:8000',
+  'https://your-frontend.vercel.app'
+];
+
+
 app.use(cors({
-  origin: 'http://localhost:8000',
+  origin: allowedOrigins,
   credentials: true
 }));
 
