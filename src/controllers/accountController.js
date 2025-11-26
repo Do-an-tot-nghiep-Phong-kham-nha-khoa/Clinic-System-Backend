@@ -98,7 +98,7 @@ module.exports.login = async (req, res) => {
 
     const tokenUser = generateHelper.generateJWTToken(account);
     res.cookie("tokenUser", tokenUser, {
-      httpOnly: true,
+      httpOnly: false,
       secure: false,
       sameSite: 'lax',
     });
@@ -296,16 +296,16 @@ module.exports.deleteAccount = async (req, res) => {
     if (roleName === 'patient') {
       //Delete patient profile if the account is a patient
       await Patient.deleteOne({ accountId: id });
-    } 
+    }
     else if (roleName === 'doctor') {
       //Delete doctor profile if the account is a doctor
       const Doctor = require('../models/doctor');
       await Doctor.deleteOne({ accountId: id });
-    } 
+    }
     else if (roleName === 'receptionist') {
       const Receptionist = require('../models/receptionist');
       await Receptionist.deleteOne({ accountId: id });
-    } 
+    }
     else if (roleName === 'admin') {
       const Admin = require('../models/admin');
       await Admin.deleteOne({ accountId: id });
