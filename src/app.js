@@ -10,7 +10,7 @@ const app = express();
 
 const allowedOrigins = [
   'http://localhost:8000',
-  'https://your-frontend.vercel.app'
+  'https://clinic-system-frontend-pi.vercel.app'
 ];
 
 
