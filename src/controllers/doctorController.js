@@ -168,7 +168,18 @@ module.exports.getAllDoctors = async (req, res) => {
   module.exports.updateDoctor = async (req, res) => {
     try {
       const { id } = req.params;
-      const updateData = req.body;
+      const updateData = { ...req.body };
+
+      // nếu có file upload, lưu avatar lên cloudinary và gán URL
+      if (req.file) {
+        try {
+          const result = await uploadCloudinary(req.file.buffer);
+          updateData.avatar = result.secure_url;
+        } catch (err) {
+          console.error('Error uploading avatar to cloudinary', err);
+          return res.status(500).json({ message: 'Lỗi khi upload avatar', error: err.message });
+        }
+      }
 
       const updatedDoctor = await Doctor.findByIdAndUpdate(id, updateData, {
         new: true,
@@ -177,6 +188,15 @@ module.exports.getAllDoctors = async (req, res) => {
 
       if (!updatedDoctor)
         return res.status(404).json({ message: "Không tìm thấy bác sĩ" });
+
+      // Nếu avatar được cập nhật, cập nhật luôn avatar trong Account liên kết
+      if (updateData.avatar && updatedDoctor.accountId) {
+        try {
+          await Account.findByIdAndUpdate(updatedDoctor.accountId, { avatar: updateData.avatar });
+        } catch (err) {
+          console.warn('Không thể cập nhật avatar trong Account:', err.message || err);
+        }
+      }
 
       res.status(200).json({
         message: "Cập nhật bác sĩ thành công",

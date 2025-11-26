@@ -11,8 +11,8 @@ router.get("/", doctorController.getAllDoctors);
 // Lấy thông tin bác sĩ theo ID
 router.get("/:id", doctorController.getDoctorById);
 
-// Cập nhật thông tin bác sĩ
-router.put("/:id", doctorController.updateDoctor);
+// Cập nhật thông tin bác sĩ (cho phép upload avatar)
+router.put("/:id", uploadMemory.single('avatar'), doctorController.updateDoctor);
 
 // Xóa bác sĩ
 
