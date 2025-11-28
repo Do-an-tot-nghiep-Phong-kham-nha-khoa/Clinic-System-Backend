@@ -18,7 +18,7 @@ const authenticate = require('../middlewares/authenticate');
 const adminRoutes = require('./adminRoutes');
 const authorize = require('../middlewares/authorize');
 const statsRoutes = require('./statsRoutes');
-
+const chatbotRoutes = require('./chatbotRoutes');
 module.exports = (app) => {
     app.use('/patients', authenticate.authenticate, authorize.authorize('patient'), patientsRoutes);
     app.use('/appointments', authenticate.authenticate, authorize.authorize('appointment'), appointmentsRoutes);
@@ -37,5 +37,6 @@ module.exports = (app) => {
     app.use('/treatments', treatmentRoutes);
     app.use('/admins', adminRoutes);
     app.use('/admin/roles', roleRoutes);
-    app.use('/stats', statsRoutes)
+    app.use('/stats', statsRoutes);
+    app.use('/chatbot', chatbotRoutes);
 }
