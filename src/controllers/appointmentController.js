@@ -5,6 +5,8 @@ const Schedule = require('../models/schedule');
 const Specialty = require('../models/specialty');
 const HealthProfile = require('../models/healthProfile');
 const FamilyMember = require('../models/familyMember');
+const Account = require('../models/account');
+const { sendMail } = require('../helpers/sendMail');
 
 // [POST] /appointments/by-doctor
 module.exports.createByDoctor = async (req, res) => {
@@ -474,12 +476,65 @@ module.exports.cancelAppointment = async (req, res) => {
 module.exports.confirmAppointment = async (req, res) => {
   try {
     const { id } = req.params;
-    const appointment = await Appointment.findById(id);
+    const appointment = await Appointment.findById(id)
+      .populate('doctor_id', 'name')
+      .populate('specialty_id', 'name');
     if (!appointment) {
       return res.status(404).json({ message: 'Appointment not found' });
     }
     appointment.status = 'confirmed';
     await appointment.save();
+
+    // Lấy email bệnh nhân (booker_id = patientId)
+    const patient = await Patient.findById(appointment.booker_id);
+    if (!patient) {
+      console.warn("Patient not found - skip sending mail");
+      return res.status(200).json({ message: 'Appointment confirmed', appointment });
+    }
+
+    const account = await Account.findById(patient.accountId);
+    const email = account?.email;
+    if (!email) {
+      console.warn("Patient email not found - skip sending mail");
+      return res.status(200).json({ message: 'Appointment confirmed', appointment });
+    }
+
+    // Lấy tên bệnh nhân từ healthProfile
+    const healthProfile = await HealthProfile.findById(appointment.healthProfile_id);
+
+    let patientName = "Bệnh nhân";
+    if (healthProfile) {
+      if (healthProfile.ownerModel === "Patient") {
+        const patientInfo = await Patient.findById(healthProfile.ownerId);
+        patientName = patientInfo?.name || patientName;
+      } else if (healthProfile.ownerModel === "FamilyMember") {
+        const fam = await FamilyMember.findById(healthProfile.ownerId);
+        patientName = fam?.name || patientName;
+      }
+    }
+
+    // Format ngày hẹn
+    const dateStr = new Date(appointment.appointmentDate)
+      .toLocaleDateString("vi-VN");
+
+    // Gửi email dùng sendMail()
+    const subject = "Xác nhận lịch hẹn khám bệnh";
+    const html = `
+      <h3>Xin chào ${patient.name},</h3>
+      <p>Bác sĩ <strong>${appointment.doctor_id?.name}</strong> đã <strong>xác nhận lịch hẹn</strong> của bệnh nhân <strong>${patientName}</strong>.</p>
+      <p>Vui lòng chuẩn bị đến phòng khám vào ngày: <strong>${dateStr}</strong></p>
+      <p>Khung giờ: <strong>${appointment.timeSlot}</strong></p>
+      <p>Chuyên khoa: <strong>${appointment.specialty_id?.name}</strong></p>
+      <p>Nếu có bất kỳ thay đổi nào, vui lòng liên hệ với chúng tôi qua email này hoặc số điện thoại hỗ trợ.</p>
+      <p>Nên có mặt trước 15 phút để làm thủ tục đăng ký và chuẩn bị khám bệnh.</p>
+      <br/>
+      <p>Trân trọng,</p>
+      <p>Hệ thống phòng khám ProHealth.</p>
+      <p>Số 123, Nguyễn Trãi, Thanh Xuân, Hà Nội.</p>
+    `;
+
+    await sendMail(email, subject, html);
+
     res.status(200).json({ message: 'Appointment confirmed successfully', appointment });
   } catch (error) {
     console.error('Error confirming appointment:', error);
