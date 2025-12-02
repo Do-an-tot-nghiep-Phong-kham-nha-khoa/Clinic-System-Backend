@@ -304,3 +304,31 @@ module.exports.deleteDoctor = async (req, res) => {
       });
     }
   }
+
+  // [PATCH] /doctors/:id/bio
+  module.exports.updateDoctorBio = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { bio } = req.body;
+      if (typeof bio !== 'string') {
+        return res.status(400).json({ message: 'Bio phải là chuỗi ký tự' });
+      }
+      const updatedDoctor = await Doctor.findByIdAndUpdate(
+        id,
+        { bio },
+        { new: true }
+      );
+      if (!updatedDoctor) {
+        return res.status(404).json({ message: "Không tìm thấy bác sĩ" });
+      }
+      res.status(200).json({
+        message: "Cập nhật bio bác sĩ thành công",
+        data: updatedDoctor,
+      });
+    } catch (err) {
+      res.status(500).json({
+        message: "Lỗi khi cập nhật bio bác sĩ",
+        error: err.message,
+      });
+    }
+  }

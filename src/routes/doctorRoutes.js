@@ -29,4 +29,7 @@ router.get("/specialty/:specialtyId", doctorController.getDoctorsBySpecialty);
 // Lấy bác sĩ theo account id
 router.get("/account/:accountId", doctorController.getDoctorByAccountId);
 
+// Cập nhật bio bác sĩ
+router.patch("/:id/bio", doctorController.updateDoctorBio);
+
 module.exports = router;
