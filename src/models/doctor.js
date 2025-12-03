@@ -8,6 +8,7 @@ const doctorSchema = new mongoose.Schema({
 
   phone: String,
   experience: Number,
+  bio : String,
   avatar: String
 });
 
