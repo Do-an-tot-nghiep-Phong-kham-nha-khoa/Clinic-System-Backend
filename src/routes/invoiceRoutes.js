@@ -13,9 +13,6 @@ router.get('/patient/:accountId', controller.getInvoicesForAuthenticatedPatient)
 router.get('/vnpay/return', controller.vnpayReturn);
 router.get('/vnpay/ipn', controller.vnpayIPN);
 
-// VNPay mock payment endpoints (giữ lại cho test)
-router.get('/mock/vnpay/checkout', controller.mockVnPayCheckout);
-router.post('/mock/vnpay/complete', controller.mockVnPayComplete);
 
 // Generic routes với :id phải đặt CUỐI
 

@@ -425,9 +425,6 @@ exports.createVnPayPayment = async (req, res) => {
 exports.vnpayReturn = async (req, res) => {
   try {
     const vnp_Params = req.query;
-    
-    console.log('=== VNPay Return ===');
-    console.log('All Params:', JSON.stringify(vnp_Params, null, 2));
 
     // Verify secure hash
     const isValid = vnpayService.verifyReturnUrl(vnp_Params);
@@ -555,55 +552,7 @@ exports.vnpayIPN = async (req, res) => {
   }
 };
 
-exports.mockVnPayCheckout = async (req, res) => {
-  try {
-    const { paymentId, invoiceId, returnUrl } = req.query;
-    if (!paymentId || !invoiceId) return res.status(400).send("Missing paymentId or invoiceId");
 
-    const html = `<html>
-      <head><title>Mock VNPay Checkout</title></head>
-      <body style="font-family: Arial, sans-serif; padding:20px;">
-        <h2>VNPay Mock Checkout</h2>
-        <p>Payment ID: <strong>${paymentId}</strong></p>
-        <p>Invoice ID: <strong>${invoiceId}</strong></p>
-        <form method="POST" action="/invoices/mock/vnpay/complete">
-          <input type="hidden" name="paymentId" value="${paymentId}" />
-          <input type="hidden" name="invoiceId" value="${invoiceId}" />
-          <input type="hidden" name="returnUrl" value="${returnUrl || '/'}" />
-          <button type="submit" style="padding:10px 16px; font-size:16px;">Simulate Payment (VNPay)</button>
-        </form>
-      </body>
-    </html>`;
-    res.setHeader("Content-Type", "text/html");
-    res.send(html);
-  } catch (error) {
-    console.error("Error rendering mock checkout:", error);
-    res.status(500).send("Server error");
-  }
-};
-
-exports.mockVnPayComplete = async (req, res) => {
-  try {
-    const { paymentId, invoiceId, returnUrl } = req.body;
-    if (!paymentId || !invoiceId) return res.status(400).send("Missing paymentId or invoiceId");
-
-    const invoice = await Invoice.findById(invoiceId);
-    if (!invoice) return res.status(404).send("Invoice not found");
-
-    const idx = (invoice.payments || []).findIndex((p) => p.providerPaymentId === paymentId);
-    if (idx === -1) return res.status(400).send("Payment token not found");
-
-    invoice.payments[idx].status = "success";
-    invoice.payments[idx].paid_at = new Date();
-    invoice.status = "Paid";
-
-    await invoice.save();
-    res.redirect(`${returnUrl || "/"}?status=success&paymentId=${paymentId}&invoiceId=${invoiceId}`);
-  } catch (error) {
-    console.error("Error completing mock vnpay payment:", error);
-    res.status(500).send("Server error");
-  }
-};
 
 /**
  * GET /invoices/patient/:accountId
