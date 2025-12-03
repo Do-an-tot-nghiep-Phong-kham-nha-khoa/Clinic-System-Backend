@@ -94,17 +94,23 @@ class TreatmentController {
         owner_detail: owner
       }
 
-      // create invoice
+      // create invoice with treatmentId and auto-generate invoiceNumber
       let createdInvoice = null;
       if (prescription || laborder) {
         try {
           const invoiceTotal = totalCost; // đã tính ở trên (labOrderPrice + prescriptionPrice)
 
+          // Generate unique invoice number
+          const invoiceCount = await Invoice.countDocuments();
+          const invoiceNumber = `INV${Date.now()}-${(invoiceCount + 1).toString().padStart(4, '0')}`;
+
           const invoice = new Invoice({
+            invoiceNumber: invoiceNumber,
+            treatmentId: saved._id, // Thêm treatmentId
             totalPrice: invoiceTotal,
             status: 'Pending',
             healthProfile_id: healthProfile,
-            created_at: treatmentDate,
+            issued_at: treatmentDate, // Sửa từ created_at thành issued_at
             prescriptionId: prescription || null,
             labOrderId: laborder || null,
           });
@@ -117,7 +123,8 @@ class TreatmentController {
 
       res.status(201).json({
         message: "Tạo treatment thành công",
-        data: populatedTreatment
+        data: populatedTreatment,
+        invoice: createdInvoice ? { _id: createdInvoice._id, invoiceNumber: createdInvoice.invoiceNumber } : null
       });
 
     } catch (error) {
