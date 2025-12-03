@@ -19,11 +19,8 @@ const adminRoutes = require('./adminRoutes');
 const authorize = require('../middlewares/authorize');
 const statsRoutes = require('./statsRoutes');
 const chatbotRoutes = require('./chatbotRoutes');
-<<<<<<< HEAD
-=======
 const vnpayRoutes = require('./vnpayRoutes');
 
->>>>>>> 65dd600a87cf1e73d6aeca431276b7bde8ee7af7
 module.exports = (app) => {
     app.use('/invoices/vnpay', vnpayRoutes);
     app.use('/patients', authenticate.authenticate, authorize.authorize('patient'), patientsRoutes);
