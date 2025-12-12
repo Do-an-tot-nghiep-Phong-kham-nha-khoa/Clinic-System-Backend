@@ -73,12 +73,20 @@ exports.chatWithBot = async (req, res) => {
           return res.status(500).json({ success: false, code: 'gemini_api_key_missing', message: 'GEMINI_API_KEY is not configured on the server.' });
         }
 
+        if (err && (err.code === 'GEMINI_API_KEY_INVALID')) {
+          return res.status(500).json({ success: false, code: 'gemini_api_key_invalid', message: 'GEMINI_API_KEY is invalid.' });
+        }
+
+        if (err && (err.code === 'GEMINI_QUOTA_EXCEEDED')) {
+          return res.status(429).json({ success: false, code: 'gemini_quota_exceeded', message: 'Gemini API quota exceeded. Please try again later.' });
+        }
+
         if (err && (err.code === 'GEMINI_SERVICE_ERROR' || err.message === 'GEMINI_SERVICE_ERROR')) {
           return res.status(502).json({ success: false, code: 'gemini_service_error', message: 'Gemini service returned an error.' });
         }
 
         // Generic error
-        return res.status(500).json({ success: false, message: 'Deep AI service error' });
+        return res.status(500).json({ success: false, message: 'AI service error' });
       }
     }
 
