@@ -45,7 +45,21 @@ module.exports.register = async (req, res) => {
     try {
       await newPatient.save();
     } catch (err) {
+      // Nếu tạo patient lỗi, rollback account đã tạo
       await Account.deleteOne({ _id: newAccount._id });
+
+      // Kiểm tra lỗi duplicate key (ví dụ số điện thoại đã tồn tại)
+      if (err && err.code === 11000) {
+        const key = Object.keys(err.keyValue || {})[0];
+        if (key === 'phone') {
+          return res.status(400).json({ message: 'Số điện thoại đã được sử dụng!' });
+        }
+        if (key === 'accountId') {
+          return res.status(400).json({ message: 'Account đã tồn tại!' });
+        }
+        return res.status(400).json({ message: `${key || 'Trường'} đã tồn tại!` });
+      }
+
       throw err;
     }
 
@@ -85,8 +99,8 @@ module.exports.login = async (req, res) => {
     const tokenUser = generateHelper.generateJWTToken(account);
     res.cookie("tokenUser", tokenUser, {
       httpOnly: true,
-      secure: false,
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
     });
     return res.status(200).json({
       message: "Đăng nhập thành công!",
@@ -173,7 +187,7 @@ module.exports.otpPasswordPost = async (req, res) => {
 // [POST] /accounts/password/reset
 module.exports.resetPasswordPost = async (req, res) => {
   try {
-    const { password } = req.body;
+    const { newPassword, confirmPassword } = req.body;
     const token = req.cookies.tokenUser;
     if (!token) return res.status(401).json({ message: "Thiếu token xác thực!" });
 
@@ -192,11 +206,11 @@ module.exports.resetPasswordPost = async (req, res) => {
       return res.status(400).json({ message: "Token không hợp lệ cho hành động này!" });
     }
 
-    if (!password || password.length < 8) {
-      return res.status(400).json({ message: "Mật khẩu phải ít nhất 8 ký tự!" });
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ message: "Mật khẩu phải ít nhất 6 ký tự!" });
     }
 
-    const hashed = await bcrypt.hash(password, 10);
+    const hashed = await bcrypt.hash(newPassword, 10);
     await Account.updateOne({ _id: decoded.id }, { password: hashed });
 
     // Xoá cookie để buộc login lại
@@ -282,16 +296,16 @@ module.exports.deleteAccount = async (req, res) => {
     if (roleName === 'patient') {
       //Delete patient profile if the account is a patient
       await Patient.deleteOne({ accountId: id });
-    } 
+    }
     else if (roleName === 'doctor') {
       //Delete doctor profile if the account is a doctor
       const Doctor = require('../models/doctor');
       await Doctor.deleteOne({ accountId: id });
-    } 
+    }
     else if (roleName === 'receptionist') {
       const Receptionist = require('../models/receptionist');
       await Receptionist.deleteOne({ accountId: id });
-    } 
+    }
     else if (roleName === 'admin') {
       const Admin = require('../models/admin');
       await Admin.deleteOne({ accountId: id });

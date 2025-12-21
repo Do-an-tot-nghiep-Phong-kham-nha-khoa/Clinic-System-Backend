@@ -18,15 +18,19 @@ const authenticate = require('../middlewares/authenticate');
 const adminRoutes = require('./adminRoutes');
 const authorize = require('../middlewares/authorize');
 const statsRoutes = require('./statsRoutes');
+const chatbotRoutes = require('./chatbotRoutes');
+const vnpayRoutes = require('./vnpayRoutes');
 
 module.exports = (app) => {
-    app.use('/patients', patientsRoutes);
+    app.use('/invoices/vnpay', vnpayRoutes);
+    app.use('/patients', authenticate.authenticate, authorize.authorize('patient'), patientsRoutes);
     app.use('/appointments', authenticate.authenticate, authorize.authorize('appointment'), appointmentsRoutes);
     app.use('/services', servicesRoutes);
     app.use('/medicines', medicineRoutes);
     app.use('/laborders', labOrderRoutes);
     app.use('/prescriptions', prescriptionRoutes);
-    app.use('/invoices', invoiceRoutes);
+    // Invoice routes với auth (các routes khác)
+    app.use('/invoices', authenticate.authenticate, authorize.authorize('invoice'), invoiceRoutes);
     app.use('/doctors', doctorRoutes);
     app.use('/accounts', accountRoutes);
     app.use('/health-profiles', healthProfileRoutes);
@@ -37,5 +41,6 @@ module.exports = (app) => {
     app.use('/treatments', treatmentRoutes);
     app.use('/admins', adminRoutes);
     app.use('/admin/roles', roleRoutes);
-    app.use('/stats', statsRoutes)
+    app.use('/stats', statsRoutes);
+    app.use('/chatbot', chatbotRoutes);
 }
