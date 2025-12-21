@@ -81,7 +81,12 @@ module.exports.register = async (req, res) => {
 module.exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ message: "Email không hợp lệ" });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ message: "Mật khẩu phải có ít nhất 6 ký tự" });
+    }
     const account = await Account.findOne({ email, deleted: false }).populate('roleId');
     if (!account) {
       return res.status(404).json({ message: "Email không tồn tại!" });
