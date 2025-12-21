@@ -5,17 +5,20 @@ const database = require('../config/database');
 const Account = require('../src/models/account');
 const Role = require('../src/models/role');
 const bcrypt = require('bcrypt');
+const mongoose = require('mongoose');
 
 const app = express();
 app.use(express.json());
 app.use('/accounts', accountRoutes);
+
+jest.setTimeout(10000); // Tăng thời gian chờ của Jest lên 10 giây
 
 describe('Login Tests', () => {
   let testAccount;
   let patientRole;
 
   beforeAll(async () => {
-    await database.connect();
+    await database.connectMockDB();
 
     // Tạo role patient nếu chưa có
     patientRole = await Role.findOne({ name: 'patient' });
@@ -38,7 +41,7 @@ describe('Login Tests', () => {
   afterAll(async () => {
     // Dọn dẹp
     await Account.deleteMany({ email: 'test@example.com' });
-    await database.disconnect();
+    await mongoose.connection.close();
   });
 
   it('đăng nhập chuẩn - thành công', async () => {
