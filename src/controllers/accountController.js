@@ -81,19 +81,24 @@ module.exports.register = async (req, res) => {
 module.exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ message: "Email không hợp lệ" });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ message: "Mật khẩu phải có ít nhất 6 ký tự" });
+    }
     const account = await Account.findOne({ email, deleted: false }).populate('roleId');
     if (!account) {
-      return res.status(400).json({ message: "Email không tồn tại!" });
+      return res.status(404).json({ message: "Email không tồn tại!" });
     }
 
     const isPasswordValid = await bcrypt.compare(password, account.password);
     if (!isPasswordValid) {
-      return res.status(400).json({ message: "Sai mật khẩu!" });
+      return res.status(401).json({ message: "Sai mật khẩu!" });
     }
 
     if (account.status === 'inactive') {
-      return res.status(400).json({ message: "Tài khoản đang bị khóa!" });
+      return res.status(402).json({ message: "Tài khoản đang bị khóa!" });
     }
 
     const tokenUser = generateHelper.generateJWTToken(account);
@@ -131,7 +136,7 @@ module.exports.forgotPasswordPost = async (req, res) => {
     const { email } = req.body;
     const account = await Account.findOne({ email, deleted: false });
     if (!account) {
-      return res.status(400).json({ message: "Email không tồn tại!" });
+      return res.status(404).json({ message: "Email không tồn tại!" });
     }
 
     const otp = generateHelper.generateRandomNumber(6);

@@ -10,4 +10,11 @@ module.exports.connect = async () => {
         console.log("Connect Error");
     }
 }
-
+module.exports.connectMockDB = async () => {
+    try {
+        await mongoose.connect(process.env.MOCK_DB_URL)
+        console.log("Connect to Mock DB successfully");
+    } catch (error) {
+        console.log("Connect to Mock DB Error");
+    }
+}
