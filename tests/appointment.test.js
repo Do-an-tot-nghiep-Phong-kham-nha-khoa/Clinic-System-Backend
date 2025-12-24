@@ -17,14 +17,12 @@ app.use('/appointments', appointmentRoutes);
 jest.setTimeout(10000);
 
 describe('Appointment Controller (by-specialty)', () => {
-  let mongod;
+  // ...existing code...
   let patient;
   let healthProfile;
   let specialty;
 
   beforeAll(async () => {
-    mongod = await MongoMemoryServer.create();
-    process.env.MONGO_URL = mongod.getUri();
     await database.connect();
 
     // create account + patient
@@ -45,7 +43,6 @@ describe('Appointment Controller (by-specialty)', () => {
     await Account.deleteMany({});
     await Specialty.deleteMany({});
     await database.disconnect();
-    if (mongod) await mongod.stop();
   });
 
   it('tạo appointment bằng specialty thành công', async () => {

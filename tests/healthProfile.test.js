@@ -18,8 +18,8 @@ describe('HealthProfile Controller', () => {
   const patientId = new mongoose.Types.ObjectId();
   let familyMemberId;
 
+  // ...existing code...
   beforeAll(async () => {
-    // start in-memory mongo and point the DB helper to it
     await database.connect();
     // create a family member linked to patientId
     const fm = await FamilyMember.create({
@@ -36,7 +36,6 @@ describe('HealthProfile Controller', () => {
     await HealthProfile.deleteMany({ ownerId: { $in: [patientId, familyMemberId] } });
     await FamilyMember.deleteMany({ _id: familyMemberId });
     await database.disconnect();
-    if (global.__MONGOD__) await global.__MONGOD__.stop();
   });
 
   it('tạo health profile cho patient thành công', async () => {

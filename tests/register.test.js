@@ -2,6 +2,7 @@ const request = require('supertest');
 const express = require('express');
 const accountRoutes = require('../src/routes/accountRoutes');
 const database = require('../config/database');
+const { MongoMemoryServer } = require('mongodb-memory-server');
 const Account = require('../src/models/account');
 const Patient = require('../src/models/patient');
 const Role = require('../src/models/role');
