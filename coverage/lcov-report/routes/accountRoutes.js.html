@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>17/17</span>
+                <span class='fraction'>0/17</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>17/17</span>
+                <span class='fraction'>0/17</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line high'></div>
+    <div class='status-line low'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -97,74 +97,74 @@
 <a name='L32'></a><a href='#L32'>32</a>
 <a name='L33'></a><a href='#L33'>33</a>
 <a name='L34'></a><a href='#L34'>34</a>
-<a name='L35'></a><a href='#L35'>35</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
+<a name='L35'></a><a href='#L35'>35</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">const express = require("express");
-const controller = require("../controllers/accountController");
-const { route } = require("./patientRoutes");
-const accountValidate = require("../validates/accountValidate");
-const router = express.Router();
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">const express = <span class="cstat-no" title="statement not covered" >require("express");</span>
+const controller = <span class="cstat-no" title="statement not covered" >require("../controllers/accountController");</span>
+const { route } = <span class="cstat-no" title="statement not covered" >require("./patientRoutes");</span>
+const accountValidate = <span class="cstat-no" title="statement not covered" >require("../validates/accountValidate");</span>
+const router = <span class="cstat-no" title="statement not covered" >express.Router();</span>
 // Đăng ký tài khoản mới
-router.post("/register", accountValidate.register, controller.register);
+<span class="cstat-no" title="statement not covered" >router.post("/register", accountValidate.register, controller.register);</span>
 &nbsp;
 // Đăng nhập tài khoản
-router.post("/login", accountValidate.login, controller.login);
+<span class="cstat-no" title="statement not covered" >router.post("/login", accountValidate.login, controller.login);</span>
 &nbsp;
 // Đăng xuất tài khoản
-router.get("/logout", controller.logout);
+<span class="cstat-no" title="statement not covered" >router.get("/logout", controller.logout);</span>
 &nbsp;
 // Quên mật khẩu - Gửi OTP
-router.post("/password/forgot", accountValidate.forgotPassword, controller.forgotPasswordPost);
+<span class="cstat-no" title="statement not covered" >router.post("/password/forgot", accountValidate.forgotPassword, controller.forgotPasswordPost);</span>
 &nbsp;
 // Xác nhận OTP lấy lại mật khẩu
-router.post("/password/otp", controller.otpPasswordPost);
+<span class="cstat-no" title="statement not covered" >router.post("/password/otp", controller.otpPasswordPost);</span>
 &nbsp;
 // Đặt lại mật khẩu mới
-router.post("/password/reset", accountValidate.resetPassword, controller.resetPasswordPost);
+<span class="cstat-no" title="statement not covered" >router.post("/password/reset", accountValidate.resetPassword, controller.resetPasswordPost);</span>
 &nbsp;
 // Lấy danh sách tài khoản
-router.get("/", controller.getAccounts);
+<span class="cstat-no" title="statement not covered" >router.get("/", controller.getAccounts);</span>
 &nbsp;
-router.get("/:id", controller.getAccountById);
+<span class="cstat-no" title="statement not covered" >router.get("/:id", controller.getAccountById);</span>
 &nbsp;
-router.delete("/:id", controller.deleteAccount);
+<span class="cstat-no" title="statement not covered" >router.delete("/:id", controller.deleteAccount);</span>
 &nbsp;
-router.put("/:id", controller.updateAccount);
+<span class="cstat-no" title="statement not covered" >router.put("/:id", controller.updateAccount);</span>
 // Lấy danh sách vai trò
-router.get("/role/:role_id", controller.getRole);
-module.exports = router;
+<span class="cstat-no" title="statement not covered" >router.get("/role/:role_id", controller.getRole);</span>
+<span class="cstat-no" title="statement not covered" >module.exports = router;</span>
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -172,7 +172,7 @@ module.exports = router;
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-12-21T16:14:49.686Z
+                at 2025-12-23T12:00:55.430Z
             </div>
         <script src="../prettify.js"></script>
         <script>
