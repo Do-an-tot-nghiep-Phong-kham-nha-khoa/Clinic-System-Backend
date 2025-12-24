@@ -30,6 +30,9 @@ module.exports.createByDoctor = async (req, res) => {
 
     // ==== 4. Đặt theo bác sĩ ====
     let doctor, specialty;
+    if(!doctor_id){
+      return res.status(400).json({ message: 'doctor_id is required when booking by doctor' });
+    }
     if (doctor_id && !specialty_id) {
       doctor = await Doctor.findById(doctor_id);
       if (!doctor) return res.status(404).json({ message: 'Doctor not found' });
