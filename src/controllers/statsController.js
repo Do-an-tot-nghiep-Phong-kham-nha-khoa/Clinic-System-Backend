@@ -3,180 +3,133 @@ const Invoice = require('../models/invoice');
 const Prescription = require('../models/prescription');
 const LabOrder = require('../models/labOrder');
 
-exports.getAppointmentsLast7Days = async (req, res) => {
+exports.getDashboardStats = async (req, res) => {
     try {
-        const last7Days = await Appointment.aggregate([
-            {
-                $match: {
-                    createdAt: {
-                        $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+        const [
+            appointmentsLast7Days,
+            appointmentStatusStats,
+            revenueLast7Days,
+            totalRevenueResult,
+            totalAppointments,
+            topMedicines,
+            topServices
+        ] = await Promise.all([
+
+            Appointment.aggregate([
+                { $match: { createdAt: { $gte: sevenDaysAgo } } },
+                {
+                    $group: {
+                        _id: {
+                            $dateToString: {
+                                format: "%Y-%m-%d",
+                                date: "$appointmentDate"
+                            }
+                        },
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { _id: 1 } }
+            ]),
+
+            Appointment.aggregate([
+                {
+                    $group: {
+                        _id: "$status",
+                        count: { $sum: 1 }
                     }
                 }
-            },
-            {
-                $group: {
-                    _id: {
-                        $dateToString: {
-                            format: "%Y-%m-%d",
-                            date: "$appointmentDate",
-                            timezone: "+00:00"
-                        }
-                    },
-                    count: { $sum: 1 }
-                }
-            },
-            { $sort: { _id: 1 } }
-        ]);
+            ]),
 
-        res.json(last7Days);
-    } catch (e) {
-        res.status(500).json({ message: e.message });
-    }
-}
+            Invoice.aggregate([
+                {
+                    $match: {
+                        status: "Paid",
+                        created_at: { $gte: sevenDaysAgo }
+                    }
+                },
+                {
+                    $group: {
+                        _id: {
+                            $dateToString: {
+                                format: "%Y-%m-%d",
+                                date: "$created_at"
+                            }
+                        },
+                        totalRevenue: { $sum: "$totalPrice" }
+                    }
+                },
+                { $sort: { _id: 1 } }
+            ]),
 
-
-exports.getRevenueLast7Days = async (req, res) => {
-    try {
-        const data = await Invoice.aggregate([
-            {
-                $match: {
-                    status: "Paid",
-                    created_at: {
-                        $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+            Invoice.aggregate([
+                { $match: { status: "Paid" } },
+                {
+                    $group: {
+                        _id: null,
+                        totalRevenue: { $sum: "$totalPrice" }
                     }
                 }
-            },
-            {
-                $group: {
-                    _id: {
-                        $dateToString: { format: "%Y-%m-%d", date: "$created_at" }
-                    },
-                    totalRevenue: { $sum: "$totalPrice" },
-                    invoiceCount: { $sum: 1 }
-                }
-            },
-            { $sort: { _id: 1 } }
-        ]);
+            ]),
 
-        res.json(data);
-    } catch (e) {
-        res.status(500).json({ message: e.message });
-    }
-}
+            Appointment.countDocuments(),
 
-exports.getAppointmentStatusStats = async (req, res) => {
-    try {
-        const data = await Appointment.aggregate([
-            {
-                $group: {
-                    _id: "$status",
-                    count: { $sum: 1 }
-                }
-            }
-        ]);
+            Prescription.aggregate([
+                { $unwind: "$items" },
+                {
+                    $group: {
+                        _id: "$items.medicineId",
+                        totalQuantity: { $sum: "$items.quantity" }
+                    }
+                },
+                { $sort: { totalQuantity: -1 } },
+                { $limit: 10 },
+                {
+                    $lookup: {
+                        from: "medicines",
+                        localField: "_id",
+                        foreignField: "_id",
+                        as: "medicine"
+                    }
+                },
+                { $unwind: "$medicine" }
+            ]),
 
-        res.json(data);
-    } catch (e) {
-        res.status(500).json({ message: e.message });
-    }
-}
-
-exports.getTotalRevenue = async (req, res) => {
-    try {
-        const result = await Invoice.aggregate([
-            { $match: { status: "Paid" } },
-            {
-                $group: {
-                    _id: null,
-                    totalRevenue: { $sum: "$totalPrice" }
-                }
-            }
+            LabOrder.aggregate([
+                { $unwind: "$items" },
+                {
+                    $group: {
+                        _id: "$items.serviceId",
+                        totalQuantity: { $sum: "$items.quantity" }
+                    }
+                },
+                { $sort: { totalQuantity: -1 } },
+                { $limit: 10 },
+                {
+                    $lookup: {
+                        from: "services",
+                        localField: "_id",
+                        foreignField: "_id",
+                        as: "service"
+                    }
+                },
+                { $unwind: "$service" }
+            ])
         ]);
 
         res.json({
-            totalRevenue: result[0]?.totalRevenue || 0
+            appointmentsLast7Days,
+            appointmentStatusStats,
+            revenueLast7Days,
+            totalRevenue: totalRevenueResult[0]?.totalRevenue || 0,
+            totalAppointments,
+            topMedicines,
+            topServices
         });
 
     } catch (e) {
-        res.status(500).json({ message: e.message });
+        console.error(e);
+        res.status(500).json({ message: "Failed to load dashboard stats" });
     }
-}
-
-exports.getTotalAppointments = async (req, res) => {
-    try {
-        const result = await Appointment.countDocuments();
-        res.json({ totalAppointments: result });
-    }
-    catch (e) {
-        res.status(500).json({ message: e.message });
-    }
-}
-
-exports.getTopMedicines = async (req, res) => {
-    try {
-        const top = await Prescription.aggregate([
-            { $unwind: "$items" },
-
-            {
-                $group: {
-                    _id: "$items.medicineId",
-                    totalQuantity: { $sum: "$items.quantity" },
-                    usedCount: { $sum: 1 }
-                }
-            },
-
-            { $sort: { totalQuantity: -1 } },
-            { $limit: 10 },
-
-            {
-                $lookup: {
-                    from: "medicines",
-                    localField: "_id",
-                    foreignField: "_id",
-                    as: "medicine"
-                }
-            },
-
-            { $unwind: "$medicine" }
-        ]);
-
-        res.json(top);
-    } catch (e) {
-        res.status(500).json({ message: e.message });
-    }
-}
-
-exports.getTopServices = async (req, res) => {
-    try {
-        const top = await LabOrder.aggregate([
-            { $unwind: "$items" },
-
-            {
-                $group: {
-                    _id: "$items.serviceId",
-                    totalQuantity: { $sum: "$items.quantity" },
-                    usedCount: { $sum: 1 }
-                }
-            },
-
-            { $sort: { totalQuantity: -1 } },
-            { $limit: 10 },
-
-            {
-                $lookup: {
-                    from: "services",
-                    localField: "_id",
-                    foreignField: "_id",
-                    as: "service"
-                }
-            },
-
-            { $unwind: "$service" }
-        ]);
-
-        res.json(top);
-    } catch (e) {
-        res.status(500).json({ message: e.message });
-    }
-}
-
+};

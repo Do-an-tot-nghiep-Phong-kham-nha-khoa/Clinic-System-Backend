@@ -38,7 +38,7 @@ describe('Login Tests', () => {
     await Account.deleteMany({ email: 'test@example.com' });
   });
 
-  it('đăng nhập thành công', async () => {
+  it('đăng nhập thành công', async () => { //TC01
     const res = await request(app)
       .post('/accounts/login')
       .send({
@@ -51,7 +51,7 @@ describe('Login Tests', () => {
     expect(res.body.user.email).toBe('test@example.com');
   });
 
-  it('email không hợp lệ (không có @)', async () => {
+  it('email không hợp lệ (không có @)', async () => { //TC02
     const res = await request(app)
       .post('/accounts/login')
       .send({
@@ -60,10 +60,10 @@ describe('Login Tests', () => {
       });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe('Email không hợp lệ');
+    expect(res.body.message).toBe('Email không hợp lệ'); 
   });
 
-  it('email trống', async () => {
+  it('email trống', async () => { //TC03
     const res = await request(app)
       .post('/accounts/login')
       .send({
@@ -75,7 +75,7 @@ describe('Login Tests', () => {
     expect(res.body.message).toBe('Email không hợp lệ');
   });
 
-  it('mật khẩu trống', async () => {
+  it('mật khẩu trống', async () => { //TC04
     const res = await request(app)
       .post('/accounts/login')
       .send({
@@ -87,7 +87,7 @@ describe('Login Tests', () => {
     expect(res.body.message).toBe('Mật khẩu phải có ít nhất 6 ký tự');
   });
 
-  it('mật khẩu quá ngắn', async () => {
+  it('mật khẩu quá ngắn', async () => { //TC05
     const res = await request(app)
       .post('/accounts/login')
       .send({
@@ -99,7 +99,7 @@ describe('Login Tests', () => {
     expect(res.body.message).toBe('Mật khẩu phải có ít nhất 6 ký tự');
   });
 
-  it('email không tồn tại', async () => {
+  it('email không tồn tại', async () => { //TC06
     const res = await request(app)
       .post('/accounts/login')
       .send({
@@ -111,7 +111,7 @@ describe('Login Tests', () => {
     expect(res.body.message).toBe('Email không tồn tại!');
   });
 
-  it('sai mật khẩu', async () => {
+  it('sai mật khẩu', async () => { //TC07
     const res = await request(app)
       .post('/accounts/login')
       .send({
