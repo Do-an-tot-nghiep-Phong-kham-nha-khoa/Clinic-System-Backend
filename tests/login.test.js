@@ -14,7 +14,7 @@ describe('Login Tests', () => {
   let patientRole;
 
   beforeAll(async () => {
-    await database.connectMockDB();
+    await database.connect();
 
     patientRole = await Role.findOne({ name: 'patient' });
     if (!patientRole) {
@@ -36,6 +36,7 @@ describe('Login Tests', () => {
 
   afterAll(async () => {
     await Account.deleteMany({ email: 'test@example.com' });
+    await database.disconnect();
   });
 
   it('đăng nhập thành công', async () => { //TC01
@@ -72,7 +73,7 @@ describe('Login Tests', () => {
       });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe('Email không hợp lệ');
+    expect(res.body.message).toBe('Vui lòng nhập email');
   });
 
   it('mật khẩu trống', async () => { //TC04
@@ -84,7 +85,7 @@ describe('Login Tests', () => {
       });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe('Mật khẩu phải có ít nhất 6 ký tự');
+    expect(res.body.message).toBe('Vui lòng nhập mật khẩu');
   });
 
   it('mật khẩu quá ngắn', async () => { //TC05
