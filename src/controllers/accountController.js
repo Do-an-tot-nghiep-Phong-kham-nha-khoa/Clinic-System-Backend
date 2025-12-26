@@ -1,11 +1,11 @@
-const Account = require('../models/account');
-const Role = require('../models/role');
-const Patient = require('../models/patient');
-const ForgotPassword = require('../models/forgotPassword');
-const generateHelper = require('../helpers/generate');
-const sendMailHelper = require('../helpers/sendMail');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
+const Account = require("../models/account");
+const Role = require("../models/role");
+const Patient = require("../models/patient");
+const ForgotPassword = require("../models/forgotPassword");
+const generateHelper = require("../helpers/generate");
+const sendMailHelper = require("../helpers/sendMail");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 // [POST] /accounts/register
 module.exports.register = async (req, res) => {
@@ -19,9 +19,11 @@ module.exports.register = async (req, res) => {
     }
 
     // Tìm role "patient"
-    const patientRole = await Role.findOne({ name: 'patient' });
+    const patientRole = await Role.findOne({ name: "patient" });
     if (!patientRole) {
-      return res.status(500).json({ message: "Role patient chưa được cấu hình trong hệ thống!" });
+      return res
+        .status(500)
+        .json({ message: "Role patient chưa được cấu hình trong hệ thống!" });
     }
 
     // Tạo account
@@ -29,7 +31,7 @@ module.exports.register = async (req, res) => {
     const newAccount = new Account({
       email,
       password: hashedPassword,
-      roleId: patientRole._id
+      roleId: patientRole._id,
     });
     await newAccount.save();
 
@@ -40,7 +42,7 @@ module.exports.register = async (req, res) => {
       phone,
       dob,
       gender,
-      address
+      address,
     });
     try {
       await newPatient.save();
@@ -51,43 +53,56 @@ module.exports.register = async (req, res) => {
       // Kiểm tra lỗi duplicate key (ví dụ số điện thoại đã tồn tại)
       if (err && err.code === 11000) {
         const key = Object.keys(err.keyValue || {})[0];
-        if (key === 'phone') {
-          return res.status(400).json({ message: 'Số điện thoại đã được sử dụng!' });
+        if (key === "phone") {
+          return res
+            .status(400)
+            .json({ message: "Số điện thoại đã được sử dụng!" });
         }
-        if (key === 'accountId') {
-          return res.status(400).json({ message: 'Account đã tồn tại!' });
+        if (key === "accountId") {
+          return res.status(400).json({ message: "Account đã tồn tại!" });
         }
-        return res.status(400).json({ message: `${key || 'Trường'} đã tồn tại!` });
+        return res
+          .status(400)
+          .json({ message: `${key || "Trường"} đã tồn tại!` });
       }
-
       throw err;
     }
 
+    // Populate roleId để lấy role name
+    await newAccount.populate("roleId");
+
     // Gắn cookie để tự động login sau đăng ký
-    const tokenUser = generateHelper.generateJWTToken(newAccount);
+    const tokenUser = generateHelper.generateJWTToken(newAccount, {
+      role: newAccount.roleId?.name,
+    });
     res.cookie("tokenUser", tokenUser, {
       httpOnly: true,
       secure: false,
-      sameSite: 'lax'
+      sameSite: "lax",
     });
-    return res.status(201).json({ message: "Đăng ký thành công!", accountId: newAccount._id });
+    return res
+      .status(201)
+      .json({ message: "Đăng ký thành công!", accountId: newAccount._id });
   } catch (error) {
     return res.status(500).json({ message: "Lỗi khi đăng ký tài khoản!" });
   }
 };
 
-
 // [POST] /accounts/login
 module.exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !email.includes('@')) {
+    if (!email || !email.includes("@")) {
       return res.status(400).json({ message: "Email không hợp lệ" });
     }
     if (!password || password.length < 6) {
-      return res.status(400).json({ message: "Mật khẩu phải có ít nhất 6 ký tự" });
+      return res
+        .status(400)
+        .json({ message: "Mật khẩu phải có ít nhất 6 ký tự" });
     }
-    const account = await Account.findOne({ email, deleted: false }).populate('roleId');
+    const account = await Account.findOne({ email, deleted: false }).populate(
+      "roleId"
+    );
     if (!account) {
       return res.status(404).json({ message: "Email không tồn tại!" });
     }
@@ -96,24 +111,26 @@ module.exports.login = async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({ message: "Sai mật khẩu!" });
     }
-
-    if (account.status === 'inactive') {
+    if (account.status === "inactive") {
       return res.status(402).json({ message: "Tài khoản đang bị khóa!" });
     }
 
-    const tokenUser = generateHelper.generateJWTToken(account);
+    // Thêm role name vào token payload
+    const tokenUser = generateHelper.generateJWTToken(account, {
+      role: account.roleId?.name,
+    });
     res.cookie("tokenUser", tokenUser, {
       httpOnly: true,
       secure: true,
-      sameSite: 'none',
+      sameSite: "none",
     });
     return res.status(200).json({
       message: "Đăng nhập thành công!",
       user: {
         id: account._id,
         email: account.email,
-        role: account.roleId.name
-      }
+        role: account.roleId.name,
+      },
     });
   } catch (error) {
     return res.status(500).json({ message: "Lỗi khi đăng nhập!" });
@@ -155,7 +172,6 @@ module.exports.forgotPasswordPost = async (req, res) => {
   }
 };
 
-
 // [POST] /accounts/password/otp
 module.exports.otpPasswordPost = async (req, res) => {
   try {
@@ -163,7 +179,9 @@ module.exports.otpPasswordPost = async (req, res) => {
 
     const result = await ForgotPassword.findOne({ email, otp });
     if (!result) {
-      return res.status(400).json({ message: "OTP không hợp lệ hoặc đã hết hạn!" });
+      return res
+        .status(400)
+        .json({ message: "OTP không hợp lệ hoặc đã hết hạn!" });
     }
 
     // Kiểm tra thời gian hết hạn
@@ -172,16 +190,22 @@ module.exports.otpPasswordPost = async (req, res) => {
       return res.status(400).json({ message: "OTP đã hết hạn!" });
     }
 
-    const account = await Account.findOne({ email, deleted: false, status: 'active' });
+    const account = await Account.findOne({
+      email,
+      deleted: false,
+      status: "active",
+    });
     if (!account) {
       return res.status(400).json({ message: "Tài khoản không hợp lệ!" });
     }
 
-    const tokenUser = generateHelper.generateJWTToken(account, { purpose: 'resetPassword' });
+    const tokenUser = generateHelper.generateJWTToken(account, {
+      purpose: "resetPassword",
+    });
     res.cookie("tokenUser", tokenUser, {
       httpOnly: true,
       secure: false,
-      sameSite: 'lax'
+      sameSite: "lax",
     });
     return res.status(200).json({ message: "Xác thực OTP thành công!" });
   } catch (error) {
@@ -194,7 +218,8 @@ module.exports.resetPasswordPost = async (req, res) => {
   try {
     const { newPassword, confirmPassword } = req.body;
     const token = req.cookies.tokenUser;
-    if (!token) return res.status(401).json({ message: "Thiếu token xác thực!" });
+    if (!token)
+      return res.status(401).json({ message: "Thiếu token xác thực!" });
 
     let decoded;
     try {
@@ -208,11 +233,15 @@ module.exports.resetPasswordPost = async (req, res) => {
 
     // Nếu token dành cho reset password, kiểm tra mục đích
     if (decoded.purpose && decoded.purpose !== "resetPassword") {
-      return res.status(400).json({ message: "Token không hợp lệ cho hành động này!" });
+      return res
+        .status(400)
+        .json({ message: "Token không hợp lệ cho hành động này!" });
     }
 
     if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({ message: "Mật khẩu phải ít nhất 6 ký tự!" });
+      return res
+        .status(400)
+        .json({ message: "Mật khẩu phải ít nhất 6 ký tự!" });
     }
 
     const hashed = await bcrypt.hash(newPassword, 10);
@@ -221,7 +250,11 @@ module.exports.resetPasswordPost = async (req, res) => {
     // Xoá cookie để buộc login lại
     res.clearCookie("tokenUser");
 
-    return res.status(200).json({ message: "Đặt lại mật khẩu thành công! Vui lòng đăng nhập lại." });
+    return res
+      .status(200)
+      .json({
+        message: "Đặt lại mật khẩu thành công! Vui lòng đăng nhập lại.",
+      });
   } catch (error) {
     return res.status(500).json({ message: "Không thể đặt lại mật khẩu!" });
   }
@@ -231,12 +264,12 @@ module.exports.resetPasswordPost = async (req, res) => {
 module.exports.getAccounts = async (req, res) => {
   try {
     let accounts = await Account.find({ deleted: false })
-      .populate('roleId', 'name')
-      .select('-password')
+      .populate("roleId", "name")
+      .select("-password")
       .lean(); // để dễ xử lý dữ liệu
 
     // Chuẩn hóa dữ liệu roleId (nếu là mảng thì lấy phần tử đầu)
-    accounts = accounts.map(acc => {
+    accounts = accounts.map((acc) => {
       if (Array.isArray(acc.roleId)) {
         acc.roleId = acc.roleId[0] || null;
       }
@@ -246,7 +279,9 @@ module.exports.getAccounts = async (req, res) => {
     return res.status(200).json({ accounts });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Không thể lấy danh sách tài khoản!" });
+    return res
+      .status(500)
+      .json({ message: "Không thể lấy danh sách tài khoản!" });
   }
 };
 
@@ -255,8 +290,8 @@ module.exports.getAccountById = async (req, res) => {
   try {
     const { id } = req.params;
     let account = await Account.findOne({ _id: id, deleted: false })
-      .populate('roleId', 'name')
-      .select('-password')
+      .populate("roleId", "name")
+      .select("-password")
       .lean();
     if (!account) {
       return res.status(404).json({ message: "Tài khoản không tồn tại!" });
@@ -269,7 +304,9 @@ module.exports.getAccountById = async (req, res) => {
     return res.status(200).json({ account });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Không thể lấy thông tin tài khoản!" });
+    return res
+      .status(500)
+      .json({ message: "Không thể lấy thông tin tài khoản!" });
   }
 };
 
@@ -283,8 +320,14 @@ module.exports.updateAccount = async (req, res) => {
       { email, roleId, status },
       { new: true }
     );
-    if (!updatedAccount) return res.status(404).json({ message: "Tài khoản không tồn tại!" });
-    return res.status(200).json({ message: "Cập nhật tài khoản thành công!", account: updatedAccount });
+    if (!updatedAccount)
+      return res.status(404).json({ message: "Tài khoản không tồn tại!" });
+    return res
+      .status(200)
+      .json({
+        message: "Cập nhật tài khoản thành công!",
+        account: updatedAccount,
+      });
   } catch (error) {
     return res.status(500).json({ message: "Không thể cập nhật tài khoản!" });
   }
@@ -294,30 +337,30 @@ module.exports.deleteAccount = async (req, res) => {
   try {
     const { id } = req.params;
     //Delete account from database
-    const Role = require('../models/role');
-    const roleId = (await Account.findById(id).populate('roleId')).roleId._id;
+    const Role = require("../models/role");
+    const roleId = (await Account.findById(id).populate("roleId")).roleId._id;
     const roleName = (await Role.findById(roleId)).name;
 
-    if (roleName === 'patient') {
+    if (roleName === "patient") {
       //Delete patient profile if the account is a patient
       await Patient.deleteOne({ accountId: id });
-    }
-    else if (roleName === 'doctor') {
+    } else if (roleName === "doctor") {
       //Delete doctor profile if the account is a doctor
-      const Doctor = require('../models/doctor');
+      const Doctor = require("../models/doctor");
       await Doctor.deleteOne({ accountId: id });
-    }
-    else if (roleName === 'receptionist') {
-      const Receptionist = require('../models/receptionist');
+    } else if (roleName === "receptionist") {
+      const Receptionist = require("../models/receptionist");
       await Receptionist.deleteOne({ accountId: id });
-    }
-    else if (roleName === 'admin') {
-      const Admin = require('../models/admin');
+    } else if (roleName === "admin") {
+      const Admin = require("../models/admin");
       await Admin.deleteOne({ accountId: id });
     }
     const deletedAccount = await Account.findOneAndDelete({ _id: id });
-    if (!deletedAccount) return res.status(404).json({ message: "Tài khoản không tồn tại!" });
-    return res.status(200).json({ message: "Xóa tài khoản thành công!", account: deletedAccount });
+    if (!deletedAccount)
+      return res.status(404).json({ message: "Tài khoản không tồn tại!" });
+    return res
+      .status(200)
+      .json({ message: "Xóa tài khoản thành công!", account: deletedAccount });
   } catch (error) {
     return res.status(500).json({ message: "Không thể xóa tài khoản!" });
   }
@@ -328,9 +371,12 @@ module.exports.getRole = async (req, res) => {
   try {
     const { role_id } = req.params;
     const role = await Role.findById(role_id);
-    if (!role) return res.status(404).json({ message: "Vai trò không tồn tại!" });
+    if (!role)
+      return res.status(404).json({ message: "Vai trò không tồn tại!" });
     return res.status(200).json({ role });
   } catch (error) {
-    return res.status(500).json({ message: "Không thể lấy danh sách vai trò!" });
+    return res
+      .status(500)
+      .json({ message: "Không thể lấy danh sách vai trò!" });
   }
 };
