@@ -7,7 +7,7 @@ const HealthProfile = require('../models/healthProfile');
 const FamilyMember = require('../models/familyMember');
 const Account = require('../models/account');
 const { sendMail } = require('../helpers/sendMail');
-
+const mongoose = require('mongoose');
 // [POST] /appointments/by-doctor
 module.exports.createByDoctor = async (req, res) => {
   try {
