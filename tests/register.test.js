@@ -45,7 +45,7 @@ describe('Register Tests', () => {
     if (mongod) await mongod.stop(); // xóa in-memory db, DB thật an toàn
     });
 
-  it('đăng ký thành công', async () => {
+  it('TC_DK_001. Đăng ký tài khoản thành công', async () => {
     const res = await request(app)
       .post('/accounts/register')
       .send({
@@ -64,7 +64,7 @@ describe('Register Tests', () => {
     expect(res.body.accountId).toBeDefined();
   });
 
-  it('fullName trống', async () => {
+  it('TC_DK_002. fullName trống', async () => {
     const res = await request(app)
       .post('/accounts/register')
       .send({
@@ -77,7 +77,7 @@ describe('Register Tests', () => {
     expect(res.body.message).toBe('Vui lòng nhập họ và tên');
   });
 
-  it('email trống', async () => {
+  it('TC_DK_003. Đăng ký thất bại khi email trống', async () => {
     const res = await request(app)
       .post('/accounts/register')
       .send({
@@ -90,7 +90,7 @@ describe('Register Tests', () => {
     expect(res.body.message).toBe('Vui lòng nhập email');
   });
 
-  it('email không hợp lệ', async () => {
+  it('TC_DK_004. Đăng ký thất bại khi email không hợp lệ', async () => {
     const res = await request(app)
       .post('/accounts/register')
       .send({
@@ -103,7 +103,7 @@ describe('Register Tests', () => {
     expect(res.body.message).toBe('Email không hợp lệ');
   });
 
-  it('password trống', async () => {
+  it('TC_DK_005. Đăng ký thất bại khi password trống', async () => {
     const res = await request(app)
       .post('/accounts/register')
       .send({
@@ -116,7 +116,7 @@ describe('Register Tests', () => {
     expect(res.body.message).toBe('Vui lòng nhập mật khẩu');
   });
 
-  it('password quá ngắn', async () => {
+  it('TC_DK_006. Đăng ký thất bại khi password quá ngắn', async () => {
     const res = await request(app)
       .post('/accounts/register')
       .send({
@@ -129,7 +129,7 @@ describe('Register Tests', () => {
     expect(res.body.message).toBe('Mật khẩu phải ít nhất 6 ký tự!');
   });
 
-  it('email đã tồn tại', async () => {
+  it('TC_DK_007. Đăng ký thất bại khi email đã tồn tại', async () => {
     const res = await request(app)
       .post('/accounts/register')
       .send({

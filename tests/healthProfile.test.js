@@ -41,7 +41,7 @@ describe('HealthProfile Controller', () => {
     if (mongod) await mongod.stop();
     });
 
-  it('tạo health profile cho patient thành công', async () => {
+  it('TC_HP_001. Tạo health profile cho patient thành công', async () => {
     const res = await request(app)
       .post(`/health-profiles/patient/${patientId}`)
       .send({
@@ -55,7 +55,7 @@ describe('HealthProfile Controller', () => {
     expect(String(res.body.ownerId)).toBe(String(patientId));
   });
 
-  it('không chấp nhận ownerModel không hợp lệ', async () => {
+  it('TC_HP_002. không chấp nhận ownerModel không hợp lệ', async () => {
     const res = await request(app)
       .post(`/health-profiles/unknown/${patientId}`)
       .send({ height: 160 });
@@ -64,7 +64,7 @@ describe('HealthProfile Controller', () => {
     expect(res.body.message).toBe('Invalid ownerModel (expected: patient|familyMember)');
   });
 
-  it('không chấp nhận ownerId không hợp lệ', async () => {
+  it('TC_HP_003. không chấp nhận ownerId không hợp lệ', async () => {
     const res = await request(app)
       .post('/health-profiles/patient/123')
       .send({ height: 160 });
@@ -73,7 +73,7 @@ describe('HealthProfile Controller', () => {
     expect(res.body.message).toBe('Invalid ownerId');
   });
 
-  it('không cho phép tạo trùng health profile', async () => {
+  it('TC_HP_004. không cho phép tạo trùng health profile', async () => {
     // first create
     await HealthProfile.create({ ownerModel: 'Patient', ownerId: patientId });
 
@@ -85,7 +85,7 @@ describe('HealthProfile Controller', () => {
     expect(res.body.message).toBe('Health profile already exists');
   });
 
-  it('lấy tất cả health profiles cho patient bao gồm người nhà', async () => {
+  it('TC_HP_005. lấy tất cả health profiles cho patient bao gồm người nhà', async () => {
     // create profile for family member
     await HealthProfile.create({ ownerModel: 'FamilyMember', ownerId: familyMemberId });
 
@@ -96,7 +96,7 @@ describe('HealthProfile Controller', () => {
     expect(res.body.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('cập nhật health profile theo id', async () => {
+  it('TC_HP_006. cập nhật health profile theo id', async () => {
     const p = await HealthProfile.create({ ownerModel: 'Patient', ownerId: new mongoose.Types.ObjectId(), height: 150 });
     const res = await request(app)
       .patch(`/health-profiles/profile/${p._id}`)
@@ -107,7 +107,7 @@ describe('HealthProfile Controller', () => {
     await HealthProfile.findByIdAndDelete(p._id);
   });
 
-  it('xóa health profile theo id', async () => {
+  it('TC_HP_007. xóa health profile theo id', async () => {
     const p = await HealthProfile.create({ ownerModel: 'Patient', ownerId: new mongoose.Types.ObjectId() });
     const res = await request(app).delete(`/health-profiles/profile/${p._id}`);
     expect(res.status).toBe(200);
