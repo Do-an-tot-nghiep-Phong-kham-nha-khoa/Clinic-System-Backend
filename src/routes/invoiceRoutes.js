@@ -7,12 +7,6 @@ const { authenticate } = require("../middlewares/authenticate");
 // Thin routing only
 router.get("/", controller.list);
 
-// Patient-specific route (phải đặt TRƯỚC /:id)
-router.get(
-  "/patient/:accountId",
-  controller.getInvoicesForAuthenticatedPatient
-);
-
 // VNPay routes (đặt trước /:id)
 router.get("/vnpay/return", controller.vnpayReturn);
 router.get("/vnpay/ipn", controller.vnpayIPN);
