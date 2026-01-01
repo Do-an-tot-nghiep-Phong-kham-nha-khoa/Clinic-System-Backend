@@ -12,8 +12,8 @@ module.exports.generateFromGemini = async function(prompt, options = {}) {
   const model = genAI.getGenerativeModel({ 
     model: "gemini-2.5-flash-lite",  // Model lite thường có quota cao hơn
     generationConfig: {
-      maxOutputTokens: options.maxOutputTokens || 200,
-      temperature: options.temperature || 0.1,
+      maxOutputTokens: options.maxOutputTokens || 700, // Increased for longer responses
+      temperature: options.temperature || 0.4, // Adjusted for more creative responses
     }
   });
 

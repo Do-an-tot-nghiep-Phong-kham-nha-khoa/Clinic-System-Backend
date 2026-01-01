@@ -1,13 +1,13 @@
-const Appointment = require("../models/appointment");
-const Patient = require("../models/patient");
-const Doctor = require("../models/doctor");
-const Schedule = require("../models/schedule");
-const Specialty = require("../models/specialty");
-const HealthProfile = require("../models/healthProfile");
-const FamilyMember = require("../models/familyMember");
-const Account = require("../models/account");
-const { sendMail } = require("../helpers/sendMail");
-
+const Appointment = require('../models/appointment');
+const Patient = require('../models/patient');
+const Doctor = require('../models/doctor');
+const Schedule = require('../models/schedule');
+const Specialty = require('../models/specialty');
+const HealthProfile = require('../models/healthProfile');
+const FamilyMember = require('../models/familyMember');
+const Account = require('../models/account');
+const { sendMail } = require('../helpers/sendMail');
+const mongoose = require('mongoose');
 // [POST] /appointments/by-doctor
 module.exports.createByDoctor = async (req, res) => {
   try {
@@ -153,38 +153,39 @@ module.exports.assignDoctor = async (req, res) => {
   try {
     const { id } = req.params;
     const { doctor_id } = req.body;
+
     if (!doctor_id) {
       return res.status(400).json({ message: "doctor_id is required" });
     }
-    // ==== 1. Lấy appointment ====
+
+    if (!mongoose.Types.ObjectId.isValid(doctor_id)) {
+      return res.status(400).json({ message: 'Invalid doctor_id' });
+    }
+
     const appointment = await Appointment.findById(id);
     if (!appointment) {
       return res.status(404).json({ message: "Appointment not found" });
     }
-    // ==== 2. Chỉ cho phép phân công nếu đang waiting_assigned ====
-    if (appointment.status !== "waiting_assigned") {
+
+    if (appointment.status !== 'waiting_assigned') {
       return res.status(400).json({
-        message:
-          'Only appointments with status "waiting_assigned" can be assigned',
+        message: 'Only appointments with status "waiting_assigned" can be assigned',
       });
     }
-    // ==== 3. Kiểm tra bác sĩ ====
+
     const doctor = await Doctor.findById(doctor_id);
     if (!doctor) {
       return res.status(404).json({ message: "Doctor not found" });
     }
-    // console.log(doctor.specialtyId, appointment.specialty_id);
-    // Bác sĩ phải cùng chuyên khoa với lịch hẹn
+
     if (doctor.specialtyId.toString() !== appointment.specialty_id.toString()) {
       return res.status(400).json({
-        message: "Doctor specialty does not match appointment specialty",
+        message: 'Doctor specialty does not match appointment specialty',
       });
-    } else console.log("Specialty match");
+    }
 
-    // ==== 4. Tìm schedule của bác sĩ cho ngày đó ====
     const dateOnly = new Date(appointment.appointmentDate);
     dateOnly.setHours(0, 0, 0, 0);
-
     const nextDay = new Date(dateOnly);
     nextDay.setDate(nextDay.getDate() + 1);
 
@@ -192,28 +193,32 @@ module.exports.assignDoctor = async (req, res) => {
       doctor_id: doctor._id,
       date: { $gte: dateOnly, $lt: nextDay },
     });
-    // console.log('Found schedule:', schedule);
-    if (!schedule) {
-      return res
-        .status(400)
-        .json({ message: "Doctor has no schedule for this date" });
-    }
-    const normalize = (t) => t.split(" ")[0].split("-")[0].trim().slice(0, 5);
-    const normalizedAppointmentSlot = normalize(appointment.timeSlot);
 
-    // ==== 5. Kiểm tra slot có trống không ====
-    const slotIndex = schedule.timeSlots.findIndex(
-      (slot) => normalize(slot.startTime) === normalizedAppointmentSlot
-    );
-    // console.log('Slot index:', slotIndex);
-    console.log(schedule.timeSlots[slotIndex + 1]);
-    if (schedule.timeSlots[slotIndex + 1].isBooked) {
+    if (!schedule) {
       return res.status(400).json({
-        message: "This time slot is already booked by another patient",
+        message: 'Doctor has no schedule for this date',
       });
     }
 
-    // ==== 6. Cập nhật dữ liệu ====
+    const normalize = t => t.split(' ')[0].slice(0, 5);
+    const appointmentTime = normalize(appointment.timeSlot);
+
+    const slotIndex = schedule.timeSlots.findIndex(
+      s => normalize(s.startTime) === appointmentTime
+    );
+
+    if (slotIndex === -1) {
+      return res.status(400).json({
+        message: 'Time slot not found in doctor schedule',
+      });
+    }
+
+    if (schedule.timeSlots[slotIndex].isBooked) {
+      return res.status(400).json({
+        message: 'This time slot is already booked by another patient',
+      });
+    }
+
     appointment.doctor_id = doctor._id;
     appointment.status = "pending";
     await appointment.save();
@@ -226,9 +231,9 @@ module.exports.assignDoctor = async (req, res) => {
       message: "Doctor assigned successfully to appointment",
       appointment,
     });
-  } catch (error) {
-    console.error("Error assigning doctor:", error);
-    return res.status(500).json({ message: "Internal server error" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -525,9 +530,15 @@ module.exports.createBySpecialty = async (req, res) => {
   }
 };
 
+// Add validation for ObjectId in deleteAppointment
 module.exports.deleteAppointment = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid appointment ID' });
+    }
+
     const appointment = await Appointment.findByIdAndDelete(id);
     if (!appointment) {
       return res.status(404).json({ message: "Appointment not found" });
