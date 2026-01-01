@@ -23,6 +23,7 @@
     "test:file": "cross-env NODE_ENV=test jest --runInBand"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
     "@google/generative-ai": "^0.24.1",
     "axios": "^1.13.2",
     "axios-retry": "^4.5.0",

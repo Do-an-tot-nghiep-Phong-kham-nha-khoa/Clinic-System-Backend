@@ -81,12 +81,11 @@ exports.chatWithBot = async (req, res) => {
     if (!message || typeof message !== "string" || !message.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Message is required"
+        message: "Message is required",
       });
     }
 
-    const convId =
-      conversationId || new mongoose.Types.ObjectId().toString();
+    const convId = conversationId || new mongoose.Types.ObjectId().toString();
 
     /* =========================
        1. Lưu message user
@@ -99,7 +98,7 @@ exports.chatWithBot = async (req, res) => {
       conversationId: convId,
       role: "user",
       content: safeContent,
-      timestamp: new Date()
+      timestamp: new Date(),
     });
 
     /* =========================
@@ -107,15 +106,15 @@ exports.chatWithBot = async (req, res) => {
     ========================= */
 
     const historyDocs = await ChatMessage.find({
-      conversationId: convId
+      conversationId: convId,
     })
       .sort({ timestamp: 1 })
       .limit(10)
       .lean();
 
     const historyPrompt = historyDocs
-      .map(m =>
-        `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`
+      .map(
+        (m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`
       )
       .join("\n");
 
@@ -131,22 +130,19 @@ exports.chatWithBot = async (req, res) => {
     if (!specialtiesRaw.length) {
       return res.status(500).json({
         success: false,
-        message: "No specialties found in system"
+        message: "No specialties found in system",
       });
     }
 
-    const specialties = specialtiesRaw.map(s => ({
+    const specialties = specialtiesRaw.map((s) => ({
       id: s._id.toString(),
       code: slugify(s.name),
       name: s.name,
-      description: s.description || ""
+      description: s.description || "",
     }));
 
     const specialtyPrompt = specialties
-      .map(
-        s =>
-          `- ${s.code} | ${s.name}: ${s.description}`
-      )
+      .map((s) => `- ${s.code} | ${s.name}: ${s.description}`)
       .join("\n");
 
     /* =========================
@@ -181,7 +177,7 @@ Assistant:
       try {
         geminiResp = await generateFromGemini(finalPrompt, {
           maxOutputTokens: 700,
-          temperature: 0.2
+          temperature: 0.2,
         });
         break;
       } catch (err) {
@@ -191,16 +187,14 @@ Assistant:
           err?.message?.toLowerCase().includes("rate");
 
         if (isRateLimit && attempt < maxRetries) {
-          await new Promise(r =>
-            setTimeout(r, Math.pow(2, attempt) * 500)
-          );
+          await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 500));
           continue;
         }
 
         console.error("Gemini error:", err);
         return res.status(502).json({
           success: false,
-          message: "AI service error"
+          message: "AI service error",
         });
       }
     }
@@ -219,9 +213,9 @@ Assistant:
       role: "assistant",
       content: assistantText,
       metadata: {
-        model: "gemini"
+        model: "gemini",
       },
-      timestamp: new Date()
+      timestamp: new Date(),
     });
 
     /* =========================
@@ -231,13 +225,13 @@ Assistant:
     return res.json({
       success: true,
       conversationId: convId,
-      message: assistantText
+      message: assistantText,
     });
   } catch (error) {
     console.error("Chatbot controller error:", error);
     return res.status(500).json({
       success: false,
-      message: "Chatbot internal error"
+      message: "Chatbot internal error",
     });
   }
 };

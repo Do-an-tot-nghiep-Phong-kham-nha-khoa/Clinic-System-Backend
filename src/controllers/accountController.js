@@ -290,9 +290,26 @@ module.exports.getAccountById = async (req, res) => {
   try {
     const { id } = req.params;
     let account = await Account.findOne({ _id: id, deleted: false })
-      .populate("roleId", "name")
-      .select("-password")
+      .populate('roleId', 'name')
+      .populate({
+        path: 'patient',
+        match: { roleId: 'patient' },
+      })
+      .populate({
+        path: 'doctor',
+        match: { roleId: 'doctor' },
+      })
+      .populate({
+        path: 'receptionist',
+        match: { roleId: 'receptionist' },
+      })
+      .populate({
+        path: 'admin',
+        match: { roleId: 'admin' },
+      })
+      .select('-password')
       .lean();
+
     if (!account) {
       return res.status(404).json({ message: "Tài khoản không tồn tại!" });
     }
@@ -333,6 +350,7 @@ module.exports.updateAccount = async (req, res) => {
   }
 };
 // [DELETE] /accounts/{id}
+
 module.exports.deleteAccount = async (req, res) => {
   try {
     const { id } = req.params;
