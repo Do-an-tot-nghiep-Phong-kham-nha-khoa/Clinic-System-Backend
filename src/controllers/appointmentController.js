@@ -454,9 +454,15 @@ module.exports.createBySpecialty = async (req, res) => {
   }
 };
 
+// Add validation for ObjectId in deleteAppointment
 module.exports.deleteAppointment = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid appointment ID' });
+    }
+
     const appointment = await Appointment.findByIdAndDelete(id);
     if (!appointment) {
       return res.status(404).json({ message: 'Appointment not found' });
