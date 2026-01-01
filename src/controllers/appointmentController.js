@@ -11,28 +11,45 @@ const mongoose = require('mongoose');
 // [POST] /appointments/by-doctor
 module.exports.createByDoctor = async (req, res) => {
   try {
-    const { booker_id, healthProfile_id, doctor_id, specialty_id, appointmentDate, timeSlot, reason } = req.body;
+    const {
+      booker_id,
+      healthProfile_id,
+      doctor_id,
+      specialty_id,
+      appointmentDate,
+      timeSlot,
+      reason,
+    } = req.body;
 
     // ==== 1. Validate cơ bản ====
-    if (!booker_id || !healthProfile_id || !appointmentDate || !timeSlot || !reason) {
-      return res.status(400).json({ message: 'Missing required fields' });
+    if (
+      !booker_id ||
+      !healthProfile_id ||
+      !appointmentDate ||
+      !timeSlot ||
+      !reason
+    ) {
+      return res.status(400).json({ message: "Missing required fields" });
     }
 
     // ==== 2. Kiểm tra bệnh nhân ====
     const booker = await Patient.findById(booker_id);
-    if (!booker) return res.status(404).json({ message: 'Profile not found or not owned by booker' });
+    if (!booker)
+      return res
+        .status(404)
+        .json({ message: "Profile not found or not owned by booker" });
 
     // ==== 3. Kiểm tra health profile ====
     const profile = await HealthProfile.findById(healthProfile_id);
     if (!profile) {
-      return res.status(404).json({ message: 'Health profile not found' });
+      return res.status(404).json({ message: "Health profile not found" });
     }
 
     // ==== 4. Đặt theo bác sĩ ====
     let doctor, specialty;
     if (doctor_id && !specialty_id) {
       doctor = await Doctor.findById(doctor_id);
-      if (!doctor) return res.status(404).json({ message: 'Doctor not found' });
+      if (!doctor) return res.status(404).json({ message: "Doctor not found" });
 
       // Lấy specialty từ bác sĩ
       specialty = doctor.specialtyId;
@@ -52,7 +69,9 @@ module.exports.createByDoctor = async (req, res) => {
       });
 
       if (!schedule) {
-        return res.status(400).json({ message: 'Doctor has no schedule for this date' });
+        return res
+          .status(400)
+          .json({ message: "Doctor has no schedule for this date" });
       }
 
       // Tìm slot
@@ -62,8 +81,7 @@ module.exports.createByDoctor = async (req, res) => {
       const slot = schedule.timeSlots.find(
         (s) => normalize(s.startTime) === normalizedInput
       );
-      if (!slot)
-        return res.status(400).json({ message: "Invalid time slot" });
+      if (!slot) return res.status(400).json({ message: "Invalid time slot" });
 
       if (slot.isBooked)
         return res.status(400).json({ message: "Time slot already booked" });
@@ -77,39 +95,56 @@ module.exports.createByDoctor = async (req, res) => {
         appointmentDate,
         timeSlot,
         reason,
-        status: "pending"
+        status: "pending",
       });
 
       await newAppointment.save();
 
       // Cập nhật schedule: tìm bằng khoảng ngày giống lúc lấy schedule và match startTime (không match cả chuỗi timeSlot)
       const updateResult = await Schedule.findOneAndUpdate(
-        { doctor_id, date: { $gte: startOfDay, $lte: endOfDay }, "timeSlots.startTime": slot.startTime },
-        { $set: { "timeSlots.$.isBooked": true, "timeSlots.$.appointment_id": newAppointment._id } },
+        {
+          doctor_id,
+          date: { $gte: startOfDay, $lte: endOfDay },
+          "timeSlots.startTime": slot.startTime,
+        },
+        {
+          $set: {
+            "timeSlots.$.isBooked": true,
+            "timeSlots.$.appointment_id": newAppointment._id,
+          },
+        },
         { new: true }
       );
 
       // Nếu không update được bằng startTime chính xác, thử match bằng phần bắt đầu của timeSlot (normalize)
       if (!updateResult) {
         const fallback = await Schedule.findOneAndUpdate(
-          { doctor_id, date: { $gte: startOfDay, $lte: endOfDay }, "timeSlots.startTime": { $regex: `^${normalizedInput}` } },
-          { $set: { "timeSlots.$.isBooked": true, "timeSlots.$.appointment_id": newAppointment._id } },
+          {
+            doctor_id,
+            date: { $gte: startOfDay, $lte: endOfDay },
+            "timeSlots.startTime": { $regex: `^${normalizedInput}` },
+          },
+          {
+            $set: {
+              "timeSlots.$.isBooked": true,
+              "timeSlots.$.appointment_id": newAppointment._id,
+            },
+          },
           { new: true }
         );
-        console.log('Schedule update fallback result:', !!fallback);
+        console.log("Schedule update fallback result:", !!fallback);
       } else {
-        console.log('Schedule updated for appointment slot:', slot.startTime);
+        console.log("Schedule updated for appointment slot:", slot.startTime);
       }
 
       return res.status(201).json({
-        message: 'Appointment booked successfully with doctor',
+        message: "Appointment booked successfully with doctor",
         appointment: newAppointment,
       });
     }
-
   } catch (error) {
-    console.error('Error creating appointment:', error);
-    return res.status(500).json({ message: 'Internal server error' });
+    console.error("Error creating appointment:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
 
@@ -120,7 +155,7 @@ module.exports.assignDoctor = async (req, res) => {
     const { doctor_id } = req.body;
 
     if (!doctor_id) {
-      return res.status(400).json({ message: 'doctor_id is required' });
+      return res.status(400).json({ message: "doctor_id is required" });
     }
 
     if (!mongoose.Types.ObjectId.isValid(doctor_id)) {
@@ -129,7 +164,7 @@ module.exports.assignDoctor = async (req, res) => {
 
     const appointment = await Appointment.findById(id);
     if (!appointment) {
-      return res.status(404).json({ message: 'Appointment not found' });
+      return res.status(404).json({ message: "Appointment not found" });
     }
 
     if (appointment.status !== 'waiting_assigned') {
@@ -140,7 +175,7 @@ module.exports.assignDoctor = async (req, res) => {
 
     const doctor = await Doctor.findById(doctor_id);
     if (!doctor) {
-      return res.status(404).json({ message: 'Doctor not found' });
+      return res.status(404).json({ message: "Doctor not found" });
     }
 
     if (doctor.specialtyId.toString() !== appointment.specialty_id.toString()) {
@@ -185,7 +220,7 @@ module.exports.assignDoctor = async (req, res) => {
     }
 
     appointment.doctor_id = doctor._id;
-    appointment.status = 'pending';
+    appointment.status = "pending";
     await appointment.save();
 
     schedule.timeSlots[slotIndex].isBooked = true;
@@ -193,7 +228,7 @@ module.exports.assignDoctor = async (req, res) => {
     await schedule.save();
 
     return res.status(200).json({
-      message: 'Doctor assigned successfully to appointment',
+      message: "Doctor assigned successfully to appointment",
       appointment,
     });
   } catch (err) {
@@ -202,24 +237,30 @@ module.exports.assignDoctor = async (req, res) => {
   }
 };
 
-
 // [PUT] /appointments/:id/status
 module.exports.updateStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
 
-    const validStatuses = ['pending', 'confirmed', 'cancelled', 'completed'];
+    const validStatuses = ["pending", "confirmed", "cancelled", "completed"];
     if (!validStatuses.includes(status))
-      return res.status(400).json({ message: 'Invalid status value' });
+      return res.status(400).json({ message: "Invalid status value" });
 
-    const appointment = await Appointment.findByIdAndUpdate(id, { status }, { new: true });
-    if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
+    const appointment = await Appointment.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true }
+    );
+    if (!appointment)
+      return res.status(404).json({ message: "Appointment not found" });
 
-    res.status(200).json({ message: 'Appointment status updated', appointment });
+    res
+      .status(200)
+      .json({ message: "Appointment status updated", appointment });
   } catch (error) {
-    console.error('Error updating status:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error updating status:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
@@ -228,18 +269,27 @@ module.exports.updateAppointment = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
-    const updatedAppointment = await Appointment.findByIdAndUpdate(id, updateData, { new: true });
-    if (!updatedAppointment) return res.status(404).json({ message: 'Appointment not found' });
-    res.status(200).json({ message: 'Appointment updated successfully', appointment: updatedAppointment });
+    const updatedAppointment = await Appointment.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true }
+    );
+    if (!updatedAppointment)
+      return res.status(404).json({ message: "Appointment not found" });
+    res.status(200).json({
+      message: "Appointment updated successfully",
+      appointment: updatedAppointment,
+    });
   } catch (error) {
-    console.error('Error updating appointment:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error updating appointment:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 // [GET] /appointments
 module.exports.getAllAppointments = async (req, res) => {
   try {
-    const { doctor_id, booker_id, status, date, specialty_id, page, limit } = req.query;
+    const { doctor_id, booker_id, status, date, specialty_id, page, limit } =
+      req.query;
     const pageNumber = parseInt(page) || 1;
     const limitNumber = parseInt(limit) || 10;
 
@@ -252,7 +302,7 @@ module.exports.getAllAppointments = async (req, res) => {
 
     const [appointments, total] = await Promise.all([
       Appointment.find(filter)
-        .populate('doctor_id specialty_id booker_id')
+        .populate("doctor_id specialty_id booker_id")
         .sort({ appointmentDate: 1 })
         .skip((pageNumber - 1) * limitNumber)
         .limit(limitNumber),
@@ -269,8 +319,8 @@ module.exports.getAllAppointments = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error fetching appointments:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error fetching appointments:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
@@ -283,7 +333,9 @@ module.exports.getAppointmentsByDoctor = async (req, res) => {
     // Find doctor by account ID
     const doctor = await Doctor.findOne({ accountId: accountId });
     if (!doctor) {
-      return res.status(404).json({ message: 'Doctor not found for this account' });
+      return res
+        .status(404)
+        .json({ message: "Doctor not found for this account" });
     }
 
     const filter = { doctor_id: doctor._id };
@@ -291,11 +343,13 @@ module.exports.getAppointmentsByDoctor = async (req, res) => {
     if (status) filter.status = status;
 
     let appointments = await Appointment.find(filter)
-      .populate('healthProfile_id')
+      .populate("healthProfile_id")
       .sort({ appointmentDate: 1 });
 
     if (!appointments.length)
-      return res.status(404).json({ message: 'No appointments found for this doctor' });
+      return res
+        .status(404)
+        .json({ message: "No appointments found for this doctor" });
 
     // append owner info (Patient or FamilyMember)
     const final = await Promise.all(
@@ -306,31 +360,31 @@ module.exports.getAppointmentsByDoctor = async (req, res) => {
 
         let owner;
         if (hp.ownerModel === "Patient") {
-          owner = await Patient.findById(hp.ownerId)
-            .select("name dob phone gender");
+          owner = await Patient.findById(hp.ownerId).select(
+            "name dob phone gender"
+          );
         } else if (hp.ownerModel === "FamilyMember") {
-          owner = await FamilyMember.findById(hp.ownerId)
-            .select("name dob phone gender");
+          owner = await FamilyMember.findById(hp.ownerId).select(
+            "name dob phone gender"
+          );
         }
 
         return {
           ...app.toObject(),
           healthProfile_id: {
             ...hp.toObject(),
-            owner_detail: owner || null
-          }
+            owner_detail: owner || null,
+          },
         };
       })
     );
 
     res.status(200).json({ count: final.length, appointments: final });
-
   } catch (error) {
-    console.error('Error fetching doctor appointments:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error fetching doctor appointments:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
-
 
 // [GET] /appointments/booker/:accountId
 module.exports.getAppointmentsByBooker = async (req, res) => {
@@ -341,7 +395,9 @@ module.exports.getAppointmentsByBooker = async (req, res) => {
     // Find patient by account ID
     const patient = await Patient.findOne({ accountId: accountId });
     if (!patient) {
-      return res.status(404).json({ message: 'Patient not found for this account' });
+      return res
+        .status(404)
+        .json({ message: "Patient not found for this account" });
     }
 
     const filter = { booker_id: patient._id };
@@ -349,11 +405,13 @@ module.exports.getAppointmentsByBooker = async (req, res) => {
     if (status) filter.status = status;
 
     let appointments = await Appointment.find(filter)
-      .populate('doctor_id specialty_id healthProfile_id')
+      .populate("doctor_id specialty_id healthProfile_id")
       .sort({ appointmentDate: -1 });
 
     if (!appointments.length)
-      return res.status(404).json({ message: 'No appointments found for this patient' });
+      return res
+        .status(404)
+        .json({ message: "No appointments found for this patient" });
 
     const final = await Promise.all(
       appointments.map(async (app) => {
@@ -365,69 +423,88 @@ module.exports.getAppointmentsByBooker = async (req, res) => {
 
         let owner;
         if (hp.ownerModel === "Patient") {
-          owner = await Patient.findById(hp.ownerId)
-            .select("name dob phone gender");
+          owner = await Patient.findById(hp.ownerId).select(
+            "name dob phone gender"
+          );
         } else if (hp.ownerModel === "FamilyMember") {
-          owner = await FamilyMember.findById(hp.ownerId)
-            .select("name dob phone gender");
+          owner = await FamilyMember.findById(hp.ownerId).select(
+            "name dob phone gender"
+          );
         }
 
         return {
           ...app.toObject(),
           healthProfile_id: {
             ...hp.toObject(),
-            owner_detail: owner || null
-          }
+            owner_detail: owner || null,
+          },
         };
       })
     );
 
     res.status(200).json({ count: final.length, appointments: final });
   } catch (error) {
-    console.error('Error fetching patient appointments:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error fetching patient appointments:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
 // [GET] /appointments/:id
 module.exports.getAppointmentById = async (req, res) => {
   try {
-    const appointment = await Appointment.findById(req.params.id)
-      .populate('doctor_id specialty_id booker_id');
+    const appointment = await Appointment.findById(req.params.id).populate(
+      "doctor_id specialty_id booker_id"
+    );
 
     if (!appointment)
-      return res.status(404).json({ message: 'Appointment not found' });
+      return res.status(404).json({ message: "Appointment not found" });
 
     res.status(200).json(appointment);
   } catch (error) {
-    console.error('Error fetching appointment:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error fetching appointment:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
 // [POST] /appointments/by-specialty
 module.exports.createBySpecialty = async (req, res) => {
   try {
-    const { booker_id, healthProfile_id, specialty_id, appointmentDate, timeSlot, reason } = req.body;
+    const {
+      booker_id,
+      healthProfile_id,
+      specialty_id,
+      appointmentDate,
+      timeSlot,
+      reason,
+    } = req.body;
 
     // 1. Validate
-    if (!booker_id || !healthProfile_id || !specialty_id || !appointmentDate || !timeSlot || !reason) {
-      return res.status(400).json({ message: 'Missing required fields' });
+    if (
+      !booker_id ||
+      !healthProfile_id ||
+      !specialty_id ||
+      !appointmentDate ||
+      !timeSlot ||
+      !reason
+    ) {
+      return res.status(400).json({ message: "Missing required fields" });
     }
 
     // 2. Kiểm tra bệnh nhân có tồn tại
     const booker = await Patient.findById(booker_id);
     if (!booker) {
-      return res.status(404).json({ message: 'Booker not found' });
+      return res.status(404).json({ message: "Booker not found" });
     }
 
     // 3. Kiểm tra health profile thuộc về bệnh nhân này
     const profile = await HealthProfile.findById(healthProfile_id);
-    if (!profile) return res.status(404).json({ message: 'Health profile not found' });
+    if (!profile)
+      return res.status(404).json({ message: "Health profile not found" });
 
     // 4. Kiểm tra specialty có tồn tại
     const specialty = await Specialty.findById(specialty_id);
-    if (!specialty) return res.status(404).json({ message: 'Specialty not found' });
+    if (!specialty)
+      return res.status(404).json({ message: "Specialty not found" });
 
     // 5. Tạo appointment mới (chưa gán doctor => doctor_id null)
     const newAppointment = new Appointment({
@@ -438,16 +515,15 @@ module.exports.createBySpecialty = async (req, res) => {
       timeSlot,
       reason,
       status: "waiting_assigned",
-      doctor_id: null
+      doctor_id: null,
     });
 
     await newAppointment.save();
 
     return res.status(201).json({
-      message: 'Appointment booked successfully by specialty',
-      appointment: newAppointment
+      message: "Appointment booked successfully by specialty",
+      appointment: newAppointment,
     });
-
   } catch (error) {
     console.error("Error creating appointment by specialty:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -465,13 +541,13 @@ module.exports.deleteAppointment = async (req, res) => {
 
     const appointment = await Appointment.findByIdAndDelete(id);
     if (!appointment) {
-      return res.status(404).json({ message: 'Appointment not found' });
+      return res.status(404).json({ message: "Appointment not found" });
     }
 
-    res.status(200).json({ message: 'Appointment deleted successfully' });
+    res.status(200).json({ message: "Appointment deleted successfully" });
   } catch (error) {
-    console.error('Error deleting appointment:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error deleting appointment:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
@@ -481,14 +557,16 @@ module.exports.cancelAppointment = async (req, res) => {
     const { id } = req.params;
     const appointment = await Appointment.findById(id);
     if (!appointment) {
-      return res.status(404).json({ message: 'Appointment not found' });
+      return res.status(404).json({ message: "Appointment not found" });
     }
-    appointment.status = 'cancelled';
+    appointment.status = "cancelled";
     await appointment.save();
-    res.status(200).json({ message: 'Appointment cancelled successfully', appointment });
+    res
+      .status(200)
+      .json({ message: "Appointment cancelled successfully", appointment });
   } catch (error) {
-    console.error('Error cancelling appointment:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error cancelling appointment:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
@@ -497,30 +575,36 @@ module.exports.confirmAppointment = async (req, res) => {
   try {
     const { id } = req.params;
     const appointment = await Appointment.findById(id)
-      .populate('doctor_id', 'name')
-      .populate('specialty_id', 'name');
+      .populate("doctor_id", "name")
+      .populate("specialty_id", "name");
     if (!appointment) {
-      return res.status(404).json({ message: 'Appointment not found' });
+      return res.status(404).json({ message: "Appointment not found" });
     }
-    appointment.status = 'confirmed';
+    appointment.status = "confirmed";
     await appointment.save();
 
     // Lấy email bệnh nhân (booker_id = patientId)
     const patient = await Patient.findById(appointment.booker_id);
     if (!patient) {
       console.warn("Patient not found - skip sending mail");
-      return res.status(200).json({ message: 'Appointment confirmed', appointment });
+      return res
+        .status(200)
+        .json({ message: "Appointment confirmed", appointment });
     }
 
     const account = await Account.findById(patient.accountId);
     const email = account?.email;
     if (!email) {
       console.warn("Patient email not found - skip sending mail");
-      return res.status(200).json({ message: 'Appointment confirmed', appointment });
+      return res
+        .status(200)
+        .json({ message: "Appointment confirmed", appointment });
     }
 
     // Lấy tên bệnh nhân từ healthProfile
-    const healthProfile = await HealthProfile.findById(appointment.healthProfile_id);
+    const healthProfile = await HealthProfile.findById(
+      appointment.healthProfile_id
+    );
 
     let patientName = "Bệnh nhân";
     if (healthProfile) {
@@ -534,8 +618,9 @@ module.exports.confirmAppointment = async (req, res) => {
     }
 
     // Format ngày hẹn
-    const dateStr = new Date(appointment.appointmentDate)
-      .toLocaleDateString("vi-VN");
+    const dateStr = new Date(appointment.appointmentDate).toLocaleDateString(
+      "vi-VN"
+    );
 
     // Gửi email dùng sendMail()
     const subject = "Xác nhận lịch hẹn khám bệnh";
@@ -555,10 +640,12 @@ module.exports.confirmAppointment = async (req, res) => {
 
     await sendMail(email, subject, html);
 
-    res.status(200).json({ message: 'Appointment confirmed successfully', appointment });
+    res
+      .status(200)
+      .json({ message: "Appointment confirmed successfully", appointment });
   } catch (error) {
-    console.error('Error confirming appointment:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error confirming appointment:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
@@ -571,7 +658,9 @@ module.exports.getAppointmentsByDoctorToday = async (req, res) => {
     // Find doctor by account ID
     const doctor = await Doctor.findOne({ accountId: accountId });
     if (!doctor) {
-      return res.status(404).json({ message: 'Doctor not found for this account' });
+      return res
+        .status(404)
+        .json({ message: "Doctor not found for this account" });
     }
 
     // Get today's date range (start and end of day)
@@ -582,19 +671,19 @@ module.exports.getAppointmentsByDoctorToday = async (req, res) => {
 
     const filter = {
       doctor_id: doctor._id,
-      appointmentDate: { $gte: today, $lt: tomorrow }
+      appointmentDate: { $gte: today, $lt: tomorrow },
     };
     if (status) filter.status = status;
 
     let appointments = await Appointment.find(filter)
-      .populate('healthProfile_id specialty_id')
+      .populate("healthProfile_id specialty_id")
       .sort({ timeSlot: 1 }); // Sort by time slot for today's schedule
 
     if (!appointments.length) {
       return res.status(200).json({
-        message: 'No appointments found for this doctor today',
+        message: "No appointments found for this doctor today",
         count: 0,
-        appointments: []
+        appointments: [],
       });
     }
 
@@ -607,27 +696,231 @@ module.exports.getAppointmentsByDoctorToday = async (req, res) => {
 
         let owner;
         if (hp.ownerModel === "Patient") {
-          owner = await Patient.findById(hp.ownerId)
-            .select("name dob phone gender");
+          owner = await Patient.findById(hp.ownerId).select(
+            "name dob phone gender"
+          );
         } else if (hp.ownerModel === "FamilyMember") {
-          owner = await FamilyMember.findById(hp.ownerId)
-            .select("name dob phone gender");
+          owner = await FamilyMember.findById(hp.ownerId).select(
+            "name dob phone gender"
+          );
         }
 
         return {
           ...app.toObject(),
           healthProfile_id: {
             ...hp.toObject(),
-            owner_detail: owner || null
-          }
+            owner_detail: owner || null,
+          },
         };
       })
     );
 
     res.status(200).json({ count: final.length, appointments: final });
-
   } catch (error) {
-    console.error('Error fetching doctor appointments for today:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error fetching doctor appointments for today:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// [GET] /appointments/booker/:accountId/month
+module.exports.getMonthAppointmentByBooker = async (req, res) => {
+  try {
+    const { accountId } = req.params; // account_id
+    const { status, date } = req.query; // date format: YYYY-MM-DD or YYYY-MM or any valid date string
+
+    // Find patient by account ID
+    const patient = await Patient.findOne({ accountId: accountId });
+    if (!patient) {
+      return res
+        .status(404)
+        .json({ message: "Patient not found for this account" });
+    }
+
+    // Determine the reference date (from query param or current date)
+    let referenceDate;
+    if (date) {
+      referenceDate = new Date(date);
+      // Validate date
+      if (isNaN(referenceDate.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+    } else {
+      referenceDate = new Date();
+    }
+
+    // Get month date range based on reference date
+    const startOfMonth = new Date(
+      referenceDate.getFullYear(),
+      referenceDate.getMonth(),
+      1
+    );
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const endOfMonth = new Date(
+      referenceDate.getFullYear(),
+      referenceDate.getMonth() + 1,
+      0
+    );
+    endOfMonth.setHours(23, 59, 59, 999);
+
+    const filter = {
+      booker_id: patient._id,
+      appointmentDate: { $gte: startOfMonth, $lte: endOfMonth },
+    };
+    if (status) filter.status = status;
+
+    let appointments = await Appointment.find(filter)
+      .populate("doctor_id specialty_id healthProfile_id")
+      .sort({ appointmentDate: 1, timeSlot: 1 });
+
+    if (!appointments.length) {
+      return res.status(200).json({
+        message: "No appointments found for this patient in this month",
+        count: 0,
+        appointments: [],
+        month: referenceDate.getMonth() + 1,
+        year: referenceDate.getFullYear(),
+      });
+    }
+
+    const final = await Promise.all(
+      appointments.map(async (app) => {
+        const hp = app.healthProfile_id;
+
+        if (!hp || !hp.ownerId || !hp.ownerModel) {
+          return app.toObject();
+        }
+
+        let owner;
+        if (hp.ownerModel === "Patient") {
+          owner = await Patient.findById(hp.ownerId).select(
+            "name dob phone gender"
+          );
+        } else if (hp.ownerModel === "FamilyMember") {
+          owner = await FamilyMember.findById(hp.ownerId).select(
+            "name dob phone gender"
+          );
+        }
+
+        return {
+          ...app.toObject(),
+          healthProfile_id: {
+            ...hp.toObject(),
+            owner_detail: owner || null,
+          },
+        };
+      })
+    );
+
+    res.status(200).json({
+      count: final.length,
+      appointments: final,
+      month: referenceDate.getMonth() + 1,
+      year: referenceDate.getFullYear(),
+    });
+  } catch (error) {
+    console.error("Error fetching patient appointments for month:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// [GET] /appointments/doctor/:accountId/month
+module.exports.getMonthAppointmentByDoctor = async (req, res) => {
+  try {
+    const { accountId } = req.params; // account_id
+    const { status, date } = req.query; // date format: YYYY-MM-DD or YYYY-MM or any valid date string
+
+    // Find doctor by account ID
+    const doctor = await Doctor.findOne({ accountId: accountId });
+    if (!doctor) {
+      return res
+        .status(404)
+        .json({ message: "Doctor not found for this account" });
+    }
+
+    // Determine the reference date (from query param or current date)
+    let referenceDate;
+    if (date) {
+      referenceDate = new Date(date);
+      // Validate date
+      if (isNaN(referenceDate.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+    } else {
+      referenceDate = new Date();
+    }
+
+    // Get month date range based on reference date
+    const startOfMonth = new Date(
+      referenceDate.getFullYear(),
+      referenceDate.getMonth(),
+      1
+    );
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const endOfMonth = new Date(
+      referenceDate.getFullYear(),
+      referenceDate.getMonth() + 1,
+      0
+    );
+    endOfMonth.setHours(23, 59, 59, 999);
+
+    const filter = {
+      doctor_id: doctor._id,
+      appointmentDate: { $gte: startOfMonth, $lte: endOfMonth },
+    };
+    if (status) filter.status = status;
+
+    let appointments = await Appointment.find(filter)
+      .populate("healthProfile_id specialty_id")
+      .sort({ appointmentDate: 1, timeSlot: 1 });
+
+    if (!appointments.length) {
+      return res.status(200).json({
+        message: "No appointments found for this doctor in this month",
+        count: 0,
+        appointments: [],
+        month: referenceDate.getMonth() + 1,
+        year: referenceDate.getFullYear(),
+      });
+    }
+
+    // Append owner info (Patient or FamilyMember)
+    const final = await Promise.all(
+      appointments.map(async (app) => {
+        const hp = app.healthProfile_id;
+
+        if (!hp || !hp.ownerId || !hp.ownerModel) return app.toObject();
+
+        let owner;
+        if (hp.ownerModel === "Patient") {
+          owner = await Patient.findById(hp.ownerId).select(
+            "name dob phone gender"
+          );
+        } else if (hp.ownerModel === "FamilyMember") {
+          owner = await FamilyMember.findById(hp.ownerId).select(
+            "name dob phone gender"
+          );
+        }
+
+        return {
+          ...app.toObject(),
+          healthProfile_id: {
+            ...hp.toObject(),
+            owner_detail: owner || null,
+          },
+        };
+      })
+    );
+
+    res.status(200).json({
+      count: final.length,
+      appointments: final,
+      month: referenceDate.getMonth() + 1,
+      year: referenceDate.getFullYear(),
+    });
+  } catch (error) {
+    console.error("Error fetching doctor appointments for month:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
