@@ -297,13 +297,9 @@ exports.updateStatus = async (req, res) => {
 
     const validStatuses = ["Paid", "Cancelled", "Pending", "Refunded"];
     if (!status || !validStatuses.includes(status))
-      return res
-        .status(400)
-        .json({
-          message: `Invalid status. Must be one of: ${validStatuses.join(
-            ", "
-          )}`,
-        });
+      return res.status(400).json({
+        message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+      });
 
     const updatedInvoice = await Invoice.findByIdAndUpdate(
       invoiceId,
@@ -512,7 +508,7 @@ exports.createVnPayPayment = async (req, res) => {
           .status(403)
           .json({ message: "Bạn không có quyền thanh toán hóa đơn này" });
       }
-    }    // Tạo mã giao dịch unique
+    } // Tạo mã giao dịch unique
     const txnRef = `INV${invoiceId.slice(-8)}_${Date.now()}`;
 
     // Lấy returnUrl từ request body (nếu có)
@@ -576,7 +572,21 @@ exports.vnpayReturn = async (req, res) => {
     const vnp_Params = req.query;
 
     console.log("=== VNPay Return ===");
-    console.log("All Params:", JSON.stringify(vnp_Params, null, 2));
+    console.log("All Params:", JSON.stringify(vnp_Params, null, 2)); // Helper function để build error redirect URL
+    const buildErrorRedirect = (errorMessage, returnUrl = null) => {
+      const vnpayConfig = require("../../config/vnpay");
+      if (returnUrl) {
+        const separator = returnUrl.includes("?") ? "&" : "?";
+        return `${returnUrl}${separator}status=error&message=${encodeURIComponent(
+          errorMessage
+        )}`;
+      }
+      return `${
+        vnpayConfig.frontend_Url
+      }/receptionist/payment-result?status=error&message=${encodeURIComponent(
+        errorMessage
+      )}`;
+    };
 
     // Verify secure hash
     const isValid = vnpayService.verifyReturnUrl(vnp_Params);
@@ -584,14 +594,7 @@ exports.vnpayReturn = async (req, res) => {
 
     if (!isValid) {
       console.error("❌ Invalid secure hash");
-      const vnpayConfig = require("../../config/vnpay");
-      return res.redirect(
-        `${
-          vnpayConfig.frontend_Url
-        }/patient/payment-result?status=error&message=${encodeURIComponent(
-          "Chữ ký không hợp lệ"
-        )}`
-      );
+      return res.redirect(buildErrorRedirect("Chữ ký không hợp lệ"));
     }
 
     const {
@@ -603,73 +606,84 @@ exports.vnpayReturn = async (req, res) => {
     } = vnp_Params;
     console.log("TxnRef:", vnp_TxnRef);
     console.log("ResponseCode:", vnp_ResponseCode);
-    console.log("TransactionNo:", vnp_TransactionNo);
-
-    // Tìm payment record
+    console.log("TransactionNo:", vnp_TransactionNo); // Tìm payment record
     const invoice = await Invoice.findOne({
       "payments.providerPaymentId": vnp_TxnRef,
     });
 
     if (!invoice) {
       console.error("❌ Invoice not found for txnRef:", vnp_TxnRef);
-      const vnpayConfig = require("../../config/vnpay");
-      return res.redirect(
-        `${
-          vnpayConfig.frontend_Url
-        }/patient/payment-result?status=error&message=${encodeURIComponent(
-          "Không tìm thấy hóa đơn"
-        )}`
-      );
+      return res.redirect(buildErrorRedirect("Không tìm thấy hóa đơn"));
     }
 
-    console.log("✅ Invoice found:", invoice._id);
-
-    // Update payment record
+    console.log("✅ Invoice found:", invoice._id); // Update payment record
     const paymentIndex = invoice.payments.findIndex(
       (p) => p.providerPaymentId === vnp_TxnRef
     );
 
-    if (paymentIndex !== -1) {
-      invoice.payments[paymentIndex].status =
-        vnp_ResponseCode === "00" ? "success" : "failed";
-      invoice.payments[paymentIndex].providerTransactionNo = vnp_TransactionNo;
-      invoice.payments[paymentIndex].paid_at = new Date();
-      invoice.payments[paymentIndex].meta = {
-        vnp_ResponseCode,
-        vnp_BankCode,
-        vnp_CardType,
-        message: vnpayService.getResponseMessage(vnp_ResponseCode),
-      };
-
-      // Nếu thanh toán thành công, update invoice status
-      if (vnp_ResponseCode === "00") {
-        invoice.status = "Paid";
-      }
-
-      await invoice.save();
-
-      console.log("Payment updated successfully");
+    if (paymentIndex === -1) {
+      console.error("❌ Payment record not found");
+      return res.redirect(
+        buildErrorRedirect("Không tìm thấy thông tin thanh toán")
+      );
     }
 
-    // Redirect về frontend
+    // Lấy returnUrl từ payment record
+    const returnUrl = invoice.payments[paymentIndex].meta?.returnUrl;
+    console.log("Return URL from payment record:", returnUrl);
+
+    // Update payment status
+    invoice.payments[paymentIndex].status =
+      vnp_ResponseCode === "00" ? "success" : "failed";
+    invoice.payments[paymentIndex].providerTransactionNo = vnp_TransactionNo;
+    invoice.payments[paymentIndex].paid_at = new Date();
+    invoice.payments[paymentIndex].meta = {
+      ...invoice.payments[paymentIndex].meta,
+      vnp_ResponseCode,
+      vnp_BankCode,
+      vnp_CardType,
+      message: vnpayService.getResponseMessage(vnp_ResponseCode),
+    };
+
+    // Nếu thanh toán thành công, update invoice status
+    if (vnp_ResponseCode === "00") {
+      invoice.status = "Paid";
+    }
+
+    await invoice.save();
+
+    console.log("Payment updated successfully");
+
+    // Redirect về frontend - sử dụng returnUrl nếu có
     const vnpayConfig = require("../../config/vnpay");
     const status = vnp_ResponseCode === "00" ? "success" : "failed";
     const message = vnpayService.getResponseMessage(vnp_ResponseCode);
 
-    res.redirect(
-      `${
-        vnpayConfig.frontend_Url
-      }/patient/payment-result?status=${status}&message=${encodeURIComponent(
+    // Xác định redirect URL
+    let redirectUrl;
+    if (returnUrl) {
+      // Nếu có returnUrl thì sử dụng nó
+      const separator = returnUrl.includes("?") ? "&" : "?";
+      redirectUrl = `${returnUrl}${separator}status=${status}&message=${encodeURIComponent(
         message
-      )}&invoiceId=${invoice._id}`
-    );
+      )}&invoiceId=${invoice._id}`;
+    } else {
+      redirectUrl = `${
+        vnpayConfig.frontend_Url
+      }/receptionist/payment-result?status=${status}&message=${encodeURIComponent(
+        message
+      )}&invoiceId=${invoice._id}`;
+    }
+
+    console.log("Redirecting to:", redirectUrl);
+    res.redirect(redirectUrl);
   } catch (error) {
     console.error("Error handling VNPay return:", error);
     const vnpayConfig = require("../../config/vnpay");
     res.redirect(
       `${
         vnpayConfig.frontend_Url
-      }/patient/payment-result?status=error&message=${encodeURIComponent(
+      }/receptionist/payment-result?status=error&message=${encodeURIComponent(
         "Lỗi hệ thống"
       )}`
     );

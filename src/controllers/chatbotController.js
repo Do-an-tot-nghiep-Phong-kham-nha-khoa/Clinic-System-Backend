@@ -7,6 +7,7 @@ const { generateFromGemini } = require("../services/geminiService");
    Helpers
 ========================= */
 
+// Tạo slug/code ổn định từ name (không dấu)
 function slugify(text = "") {
   return text
     .toLowerCase()
@@ -17,37 +18,53 @@ function slugify(text = "") {
     .replace(/\s+/g, "_");
 }
 
+// Redact PHI cơ bản (tuỳ chỉnh thêm nếu cần)
 function redactPHI(text) {
   if (!text) return text;
   return text.replace(/\b\d{9,}\b/g, "[REDACTED]");
 }
 
+// System prompt cố định (luật + format)
 function buildSystemPrompt() {
   return `
-Bạn là trợ lý tư vấn y tế của bệnh viện.
+Bạn là **Trợ lý Tư vấn Y tế của Bệnh viện** (tiếng Việt).
 
-Quy tắc bắt buộc:
-- Không chẩn đoán bệnh
-- Không kê đơn thuốc
-- Không kết luận chắc chắn
-- Chỉ tư vấn chăm sóc ban đầu
-- Nếu có dấu hiệu nguy hiểm → yêu cầu đi cấp cứu ngay
+🎯 NHIỆM VỤ:
+- Tư vấn sức khỏe ban đầu dựa trên mô tả của bệnh nhân
+- Hướng dẫn xử trí an toàn, đúng y khoa
+- GỢI Ý **CHUYÊN KHOA PHÙ HỢP** trong bệnh viện để bệnh nhân đi khám
 
-Yêu cầu:
-- Chọn CHÍNH XÁC 1 chuyên khoa từ danh sách được cung cấp
-- Không tự tạo chuyên khoa
-- Trả lời đúng format sau:
+🚫 QUY ĐỊNH BẮT BUỘC:
+- ❌ KHÔNG chẩn đoán bệnh
+- ❌ KHÔNG kê đơn thuốc
+- ❌ KHÔNG kết luận chắc chắn
+- ✅ Chỉ tư vấn chăm sóc ban đầu & hướng dẫn đi khám
+- ⚠️ Nếu có dấu hiệu nguy hiểm (khó thở, đau ngực dữ dội, ngất, yếu liệt, nói khó, co giật, chảy máu nhiều không cầm, lơ mơ, sốt cao kéo dài)
+  → YÊU CẦU ĐI CẤP CỨU NGAY / GỌI 115
 
+📌 CHUYÊN KHOA:
+- BẮT BUỘC chọn **CHÍNH XÁC 1 chuyên khoa** trong DANH SÁCH CUNG CẤP
+- KHÔNG được tự tạo hoặc suy đoán thêm chuyên khoa khác
+- Trả về **code + name đúng như danh sách**
+
+📌 FORMAT TRẢ LỜI (KHÔNG ĐƯỢC THAY ĐỔI):
 1️⃣ Mức độ: Khẩn cấp | Cần đi khám sớm | Có thể theo dõi
 
 2️⃣ Nên làm ngay:
-- Tối đa 3 ý
+- Tối đa 3 gạch đầu dòng
+- Ngắn gọn, rõ ràng, đúng y khoa
 
 3️⃣ Chuyên khoa đề xuất bệnh nhân khám:
-<Tên chuyên khoa> (<Mô tả chuyên khoa>)
+- Ghi theo mẫu:
+  <Tên chuyên khoa> (<Mô tả chuyên khoa>)
+- Tên chuyên khoa và mô tả PHẢI khớp chính xác với DANH SÁCH CHUYÊN KHOA ĐƯỢC CUNG CẤP
+- KHÔNG hiển thị code, KHÔNG dùng bullet list
 
 4️⃣ Hỏi nhanh:
 - Tối đa 3 câu
+- Chỉ hỏi thông tin cần thiết để hỗ trợ tốt hơn
+
+🗣️ Văn phong: ngắn gọn, rõ ràng, như nhân viên y tế
 `;
 }
 
@@ -68,14 +85,13 @@ exports.chatWithBot = async (req, res) => {
       });
     }
 
-    const convId =
-      conversationId || new mongoose.Types.ObjectId().toString();
-
-    const safeContent = redactPHI(message);
+    const convId = conversationId || new mongoose.Types.ObjectId().toString();
 
     /* =========================
        1. Lưu message user
     ========================= */
+
+    const safeContent = redactPHI(message);
 
     await ChatMessage.create({
       patientId,
@@ -86,7 +102,24 @@ exports.chatWithBot = async (req, res) => {
     });
 
     /* =========================
-       2. Lấy danh sách chuyên khoa (gọn)
+       2. Lấy lịch sử chat (giới hạn)
+    ========================= */
+
+    const historyDocs = await ChatMessage.find({
+      conversationId: convId,
+    })
+      .sort({ timestamp: 1 })
+      .limit(10)
+      .lean();
+
+    const historyPrompt = historyDocs
+      .map(
+        (m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`
+      )
+      .join("\n");
+
+    /* =========================
+       3. Lấy specialty từ DB
     ========================= */
 
     const specialtiesRaw = await Specialty.find(
@@ -102,33 +135,39 @@ exports.chatWithBot = async (req, res) => {
     }
 
     const specialties = specialtiesRaw.map((s) => ({
+      id: s._id.toString(),
       code: slugify(s.name),
       name: s.name,
       description: s.description || "",
     }));
 
     const specialtyPrompt = specialties
-      .map((s) => `- ${s.code}: ${s.name}`)
+      .map((s) => `- ${s.code} | ${s.name}: ${s.description}`)
       .join("\n");
 
     /* =========================
-       3. Build prompt (tối ưu)
+       4. Build prompt hoàn chỉnh
     ========================= */
 
-    const finalPrompt = `
-${buildSystemPrompt()}
+    const systemPrompt = buildSystemPrompt();
 
-Danh sách chuyên khoa:
+    const finalPrompt = `
+${systemPrompt}
+
+=== DANH SÁCH CHUYÊN KHOA TRONG HỆ THỐNG ===
 ${specialtyPrompt}
 
-Triệu chứng người bệnh:
+=== LỊCH SỬ TRAO ĐỔI ===
+${historyPrompt}
+
+=== NGƯỜI BỆNH HIỆN TẠI ===
 ${safeContent}
 
-Trả lời đúng format.
+Assistant:
 `;
 
     /* =========================
-       4. Gọi Gemini
+       5. Gọi Gemini
     ========================= */
 
     let geminiResp;
@@ -165,7 +204,7 @@ Trả lời đúng format.
       "Xin lỗi, hiện không thể trả lời. Vui lòng thử lại sau.";
 
     /* =========================
-       5. Lưu phản hồi assistant
+       6. Lưu phản hồi assistant
     ========================= */
 
     await ChatMessage.create({
@@ -180,7 +219,7 @@ Trả lời đúng format.
     });
 
     /* =========================
-       6. Trả kết quả
+       7. Trả kết quả
     ========================= */
 
     return res.json({
