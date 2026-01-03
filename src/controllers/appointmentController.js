@@ -7,6 +7,11 @@ const HealthProfile = require('../models/healthProfile');
 const FamilyMember = require('../models/familyMember');
 const Account = require('../models/account');
 const { sendMail } = require('../helpers/sendMail');
+const {
+  createPatientSnapshot,
+  createDoctorSnapshot,
+  createSpecialtySnapshot
+} = require('../helpers/appointmentSnapshot');
 const mongoose = require('mongoose');
 // [POST] /appointments/by-doctor
 module.exports.createByDoctor = async (req, res) => {
@@ -86,6 +91,13 @@ module.exports.createByDoctor = async (req, res) => {
       if (slot.isBooked)
         return res.status(400).json({ message: "Time slot already booked" });
 
+      // Tạo snapshots
+      const [patientSnapshot, doctorSnapshot, specialtySnapshot] = await Promise.all([
+        createPatientSnapshot(healthProfile_id),
+        createDoctorSnapshot(doctor._id),
+        createSpecialtySnapshot(specialty)
+      ]);
+
       // Tạo appointment
       const newAppointment = new Appointment({
         booker_id,
@@ -96,6 +108,9 @@ module.exports.createByDoctor = async (req, res) => {
         timeSlot,
         reason,
         status: "pending",
+        patientSnapshot,
+        doctorSnapshot,
+        specialtySnapshot
       });
 
       await newAppointment.save();
@@ -219,8 +234,12 @@ module.exports.assignDoctor = async (req, res) => {
       });
     }
 
+    // Tạo doctor snapshot
+    const doctorSnapshot = await createDoctorSnapshot(doctor._id);
+    
     appointment.doctor_id = doctor._id;
     appointment.status = "pending";
+    appointment.doctorSnapshot = doctorSnapshot;
     await appointment.save();
 
     schedule.timeSlots[slotIndex].isBooked = true;
@@ -302,15 +321,24 @@ module.exports.getAllAppointments = async (req, res) => {
 
     const [appointments, total] = await Promise.all([
       Appointment.find(filter)
-        .populate("doctor_id specialty_id booker_id")
+        .select('appointmentDate timeSlot reason status patientSnapshot doctorSnapshot specialtySnapshot createdAt booker_id doctor_id specialty_id healthProfile_id')
         .sort({ appointmentDate: 1 })
         .skip((pageNumber - 1) * limitNumber)
-        .limit(limitNumber),
+        .limit(limitNumber)
+        .lean(),
       Appointment.countDocuments(filter),
     ]);
 
+    // Sử dụng snapshot đã có thay vì populate
+    const appointmentsWithSnapshot = appointments.map(app => ({
+      ...app,
+      patient: app.patientSnapshot || null,
+      doctor: app.doctorSnapshot || null,
+      specialty: app.specialtySnapshot || null
+    }));
+
     res.status(200).json({
-      data: appointments,
+      data: appointmentsWithSnapshot,
       meta: {
         page: pageNumber,
         limit: limitNumber,
@@ -342,42 +370,23 @@ module.exports.getAppointmentsByDoctor = async (req, res) => {
     if (date) filter.appointmentDate = new Date(date);
     if (status) filter.status = status;
 
-    let appointments = await Appointment.find(filter)
-      .populate("healthProfile_id")
-      .sort({ appointmentDate: 1 });
+    // Chỉ select các fields cần thiết, KHÔNG populate
+    const appointments = await Appointment.find(filter)
+      .select('appointmentDate timeSlot reason status patientSnapshot specialtySnapshot createdAt healthProfile_id')
+      .sort({ appointmentDate: 1 })
+      .lean(); // Use lean() for better performance
 
     if (!appointments.length)
       return res
         .status(404)
         .json({ message: "No appointments found for this doctor" });
 
-    // append owner info (Patient or FamilyMember)
-    const final = await Promise.all(
-      appointments.map(async (app) => {
-        const hp = app.healthProfile_id;
-
-        if (!hp || !hp.ownerId || !hp.ownerModel) return app;
-
-        let owner;
-        if (hp.ownerModel === "Patient") {
-          owner = await Patient.findById(hp.ownerId).select(
-            "name dob phone gender"
-          );
-        } else if (hp.ownerModel === "FamilyMember") {
-          owner = await FamilyMember.findById(hp.ownerId).select(
-            "name dob phone gender"
-          );
-        }
-
-        return {
-          ...app.toObject(),
-          healthProfile_id: {
-            ...hp.toObject(),
-            owner_detail: owner || null,
-          },
-        };
-      })
-    );
+    // Sử dụng snapshot đã có, không cần query thêm
+    const final = appointments.map(app => ({
+      ...app,
+      patient: app.patientSnapshot || null,
+      specialty: app.specialtySnapshot || null
+    }));
 
     res.status(200).json({ count: final.length, appointments: final });
   } catch (error) {
@@ -404,43 +413,24 @@ module.exports.getAppointmentsByBooker = async (req, res) => {
     if (date) filter.appointmentDate = new Date(date);
     if (status) filter.status = status;
 
-    let appointments = await Appointment.find(filter)
-      .populate("doctor_id specialty_id healthProfile_id")
-      .sort({ appointmentDate: -1 });
+    // Sử dụng snapshot, không populate
+    const appointments = await Appointment.find(filter)
+      .select('appointmentDate timeSlot reason status patientSnapshot doctorSnapshot specialtySnapshot createdAt healthProfile_id')
+      .sort({ appointmentDate: -1 })
+      .lean();
 
     if (!appointments.length)
       return res
         .status(404)
         .json({ message: "No appointments found for this patient" });
 
-    const final = await Promise.all(
-      appointments.map(async (app) => {
-        const hp = app.healthProfile_id;
-
-        if (!hp || !hp.ownerId || !hp.ownerModel) {
-          return app.toObject();
-        }
-
-        let owner;
-        if (hp.ownerModel === "Patient") {
-          owner = await Patient.findById(hp.ownerId).select(
-            "name dob phone gender"
-          );
-        } else if (hp.ownerModel === "FamilyMember") {
-          owner = await FamilyMember.findById(hp.ownerId).select(
-            "name dob phone gender"
-          );
-        }
-
-        return {
-          ...app.toObject(),
-          healthProfile_id: {
-            ...hp.toObject(),
-            owner_detail: owner || null,
-          },
-        };
-      })
-    );
+    // Sử dụng snapshot đã có
+    const final = appointments.map(app => ({
+      ...app,
+      patient: app.patientSnapshot || null,
+      doctor: app.doctorSnapshot || null,
+      specialty: app.specialtySnapshot || null
+    }));
 
     res.status(200).json({ count: final.length, appointments: final });
   } catch (error) {
@@ -452,14 +442,22 @@ module.exports.getAppointmentsByBooker = async (req, res) => {
 // [GET] /appointments/:id
 module.exports.getAppointmentById = async (req, res) => {
   try {
-    const appointment = await Appointment.findById(req.params.id).populate(
-      "doctor_id specialty_id booker_id"
-    );
+    const appointment = await Appointment.findById(req.params.id)
+      .select('appointmentDate timeSlot reason status patientSnapshot doctorSnapshot specialtySnapshot booker_id doctor_id specialty_id healthProfile_id createdAt')
+      .lean();
 
     if (!appointment)
       return res.status(404).json({ message: "Appointment not found" });
 
-    res.status(200).json(appointment);
+    // Sử dụng snapshot
+    const result = {
+      ...appointment,
+      patient: appointment.patientSnapshot || null,
+      doctor: appointment.doctorSnapshot || null,
+      specialty: appointment.specialtySnapshot || null
+    };
+
+    res.status(200).json(result);
   } catch (error) {
     console.error("Error fetching appointment:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -506,7 +504,13 @@ module.exports.createBySpecialty = async (req, res) => {
     if (!specialty)
       return res.status(404).json({ message: "Specialty not found" });
 
-    // 5. Tạo appointment mới (chưa gán doctor => doctor_id null)
+    // 5. Tạo snapshots (patient và specialty, chưa có doctor)
+    const [patientSnapshot, specialtySnapshot] = await Promise.all([
+      createPatientSnapshot(healthProfile_id),
+      createSpecialtySnapshot(specialty_id)
+    ]);
+
+    // 6. Tạo appointment mới (chưa gán doctor => doctor_id null)
     const newAppointment = new Appointment({
       booker_id,
       healthProfile_id,
@@ -516,6 +520,8 @@ module.exports.createBySpecialty = async (req, res) => {
       reason,
       status: "waiting_assigned",
       doctor_id: null,
+      patientSnapshot,
+      specialtySnapshot
     });
 
     await newAppointment.save();
@@ -574,9 +580,7 @@ module.exports.cancelAppointment = async (req, res) => {
 module.exports.confirmAppointment = async (req, res) => {
   try {
     const { id } = req.params;
-    const appointment = await Appointment.findById(id)
-      .populate("doctor_id", "name")
-      .populate("specialty_id", "name");
+    const appointment = await Appointment.findById(id);
     if (!appointment) {
       return res.status(404).json({ message: "Appointment not found" });
     }
@@ -601,21 +605,10 @@ module.exports.confirmAppointment = async (req, res) => {
         .json({ message: "Appointment confirmed", appointment });
     }
 
-    // Lấy tên bệnh nhân từ healthProfile
-    const healthProfile = await HealthProfile.findById(
-      appointment.healthProfile_id
-    );
-
-    let patientName = "Bệnh nhân";
-    if (healthProfile) {
-      if (healthProfile.ownerModel === "Patient") {
-        const patientInfo = await Patient.findById(healthProfile.ownerId);
-        patientName = patientInfo?.name || patientName;
-      } else if (healthProfile.ownerModel === "FamilyMember") {
-        const fam = await FamilyMember.findById(healthProfile.ownerId);
-        patientName = fam?.name || patientName;
-      }
-    }
+    // Sử dứng snapshot thay vì query
+    const patientName = appointment.patientSnapshot?.name || "Bệnh nhân";
+    const doctorName = appointment.doctorSnapshot?.name || "Bác sĩ";
+    const specialtyName = appointment.specialtySnapshot?.name || "";
 
     // Format ngày hẹn
     const dateStr = new Date(appointment.appointmentDate).toLocaleDateString(
@@ -626,10 +619,10 @@ module.exports.confirmAppointment = async (req, res) => {
     const subject = "Xác nhận lịch hẹn khám bệnh";
     const html = `
       <h3>Xin chào ${patient.name},</h3>
-      <p>Bác sĩ <strong>${appointment.doctor_id?.name}</strong> đã <strong>xác nhận lịch hẹn</strong> của bệnh nhân <strong>${patientName}</strong>.</p>
+      <p>Bác sĩ <strong>${doctorName}</strong> đã <strong>xác nhận lịch hẹn</strong> của bệnh nhân <strong>${patientName}</strong>.</p>
       <p>Vui lòng chuẩn bị đến phòng khám vào ngày: <strong>${dateStr}</strong></p>
       <p>Khung giờ: <strong>${appointment.timeSlot}</strong></p>
-      <p>Chuyên khoa: <strong>${appointment.specialty_id?.name}</strong></p>
+      <p>Chuyên khoa: <strong>${specialtyName}</strong></p>
       <p>Nếu có bất kỳ thay đổi nào, vui lòng liên hệ với chúng tôi qua email này hoặc số điện thoại hỗ trợ.</p>
       <p>Nên có mặt trước 15 phút để làm thủ tục đăng ký và chuẩn bị khám bệnh.</p>
       <br/>
@@ -675,9 +668,12 @@ module.exports.getAppointmentsByDoctorToday = async (req, res) => {
     };
     if (status) filter.status = status;
 
-    let appointments = await Appointment.find(filter)
-      .populate("healthProfile_id specialty_id")
-      .sort({ timeSlot: 1 }); // Sort by time slot for today's schedule
+    // Sử dụng snapshot cho performance, nhưng vẫn populate healthProfile cho medical info
+    const appointments = await Appointment.find(filter)
+      .select('appointmentDate timeSlot reason status patientSnapshot specialtySnapshot createdAt healthProfile_id doctor_id')
+      .populate('healthProfile_id')
+      .sort({ timeSlot: 1 })
+      .lean();
 
     if (!appointments.length) {
       return res.status(200).json({
@@ -687,33 +683,12 @@ module.exports.getAppointmentsByDoctorToday = async (req, res) => {
       });
     }
 
-    // Append owner info (Patient or FamilyMember)
-    const final = await Promise.all(
-      appointments.map(async (app) => {
-        const hp = app.healthProfile_id;
-
-        if (!hp || !hp.ownerId || !hp.ownerModel) return app.toObject();
-
-        let owner;
-        if (hp.ownerModel === "Patient") {
-          owner = await Patient.findById(hp.ownerId).select(
-            "name dob phone gender"
-          );
-        } else if (hp.ownerModel === "FamilyMember") {
-          owner = await FamilyMember.findById(hp.ownerId).select(
-            "name dob phone gender"
-          );
-        }
-
-        return {
-          ...app.toObject(),
-          healthProfile_id: {
-            ...hp.toObject(),
-            owner_detail: owner || null,
-          },
-        };
-      })
-    );
+    // Sử dụng snapshot đã có
+    const final = appointments.map(app => ({
+      ...app,
+      patient: app.patientSnapshot || null,
+      specialty: app.specialtySnapshot || null
+    }));
 
     res.status(200).json({ count: final.length, appointments: final });
   } catch (error) {
@@ -769,9 +744,11 @@ module.exports.getMonthAppointmentByBooker = async (req, res) => {
     };
     if (status) filter.status = status;
 
-    let appointments = await Appointment.find(filter)
-      .populate("doctor_id specialty_id healthProfile_id")
-      .sort({ appointmentDate: 1, timeSlot: 1 });
+    // Sử dụng snapshot, không populate
+    const appointments = await Appointment.find(filter)
+      .select('appointmentDate timeSlot reason status patientSnapshot doctorSnapshot specialtySnapshot createdAt healthProfile_id')
+      .sort({ appointmentDate: 1, timeSlot: 1 })
+      .lean();
 
     if (!appointments.length) {
       return res.status(200).json({
@@ -783,34 +760,13 @@ module.exports.getMonthAppointmentByBooker = async (req, res) => {
       });
     }
 
-    const final = await Promise.all(
-      appointments.map(async (app) => {
-        const hp = app.healthProfile_id;
-
-        if (!hp || !hp.ownerId || !hp.ownerModel) {
-          return app.toObject();
-        }
-
-        let owner;
-        if (hp.ownerModel === "Patient") {
-          owner = await Patient.findById(hp.ownerId).select(
-            "name dob phone gender"
-          );
-        } else if (hp.ownerModel === "FamilyMember") {
-          owner = await FamilyMember.findById(hp.ownerId).select(
-            "name dob phone gender"
-          );
-        }
-
-        return {
-          ...app.toObject(),
-          healthProfile_id: {
-            ...hp.toObject(),
-            owner_detail: owner || null,
-          },
-        };
-      })
-    );
+    // Sử dụng snapshot đã có
+    const final = appointments.map(app => ({
+      ...app,
+      patient: app.patientSnapshot || null,
+      doctor: app.doctorSnapshot || null,
+      specialty: app.specialtySnapshot || null
+    }));
 
     res.status(200).json({
       count: final.length,
@@ -871,9 +827,11 @@ module.exports.getMonthAppointmentByDoctor = async (req, res) => {
     };
     if (status) filter.status = status;
 
-    let appointments = await Appointment.find(filter)
-      .populate("healthProfile_id specialty_id")
-      .sort({ appointmentDate: 1, timeSlot: 1 });
+    // Sử dụng snapshot, không populate
+    const appointments = await Appointment.find(filter)
+      .select('appointmentDate timeSlot reason status patientSnapshot specialtySnapshot createdAt healthProfile_id')
+      .sort({ appointmentDate: 1, timeSlot: 1 })
+      .lean();
 
     if (!appointments.length) {
       return res.status(200).json({
@@ -885,33 +843,12 @@ module.exports.getMonthAppointmentByDoctor = async (req, res) => {
       });
     }
 
-    // Append owner info (Patient or FamilyMember)
-    const final = await Promise.all(
-      appointments.map(async (app) => {
-        const hp = app.healthProfile_id;
-
-        if (!hp || !hp.ownerId || !hp.ownerModel) return app.toObject();
-
-        let owner;
-        if (hp.ownerModel === "Patient") {
-          owner = await Patient.findById(hp.ownerId).select(
-            "name dob phone gender"
-          );
-        } else if (hp.ownerModel === "FamilyMember") {
-          owner = await FamilyMember.findById(hp.ownerId).select(
-            "name dob phone gender"
-          );
-        }
-
-        return {
-          ...app.toObject(),
-          healthProfile_id: {
-            ...hp.toObject(),
-            owner_detail: owner || null,
-          },
-        };
-      })
-    );
+    // Sử dụng snapshot đã có
+    const final = appointments.map(app => ({
+      ...app,
+      patient: app.patientSnapshot || null,
+      specialty: app.specialtySnapshot || null
+    }));
 
     res.status(200).json({
       count: final.length,

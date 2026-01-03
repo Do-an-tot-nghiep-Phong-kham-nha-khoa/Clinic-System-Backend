@@ -37,6 +37,24 @@ const appointmentSchema = new mongoose.Schema({
         enum: ["waiting_assigned", "pending", "confirmed", "cancelled", "completed"],
         default: 'waiting_assigned'
     },
+    // ===== SNAPSHOTS để tránh N+1 query =====
+    patientSnapshot: {
+        name: String,
+        dob: Date,
+        phone: String,
+        gender: String,
+        ownerModel: String  // "Patient" hoặc "FamilyMember"
+    },
+    doctorSnapshot: {
+        name: String,
+        phone: String,
+        experience: Number,
+        avatar: String
+    },
+    specialtySnapshot: {
+        name: String,
+        description: String
+    },
     createdAt: {
         type: Date,
         default: Date.now
