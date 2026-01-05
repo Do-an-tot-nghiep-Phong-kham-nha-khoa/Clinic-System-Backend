@@ -6,6 +6,7 @@ const cors = require("cors");
 const database = require("../config/database.js");
 const cookieParser = require("cookie-parser");
 const indexRoutes = require("./routes/indexRoutes.js");
+const { initScheduledJobs } = require("./jobs/scheduleCronJobs.js");
 const app = express();
 
 const allowedOrigins = [
@@ -25,6 +26,9 @@ app.use(cookieParser());
 
 // connect database (env already loaded above)
 database.connect();
+
+// Khởi động scheduled jobs (cron jobs)
+initScheduledJobs();
 
 indexRoutes(app);
 

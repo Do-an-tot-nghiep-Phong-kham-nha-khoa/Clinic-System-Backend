@@ -9,6 +9,15 @@ router.get('/:doctor_id', controller.getDoctorScheduleByID);
 
 router.post('/', controller.createSchedule);
 
+// Auto-create schedules for all doctors (manual trigger)
+router.post('/auto-create', controller.autoCreateSchedules);
+
+// Cleanup old schedules (manual trigger)
+router.delete('/cleanup', controller.cleanupSchedules);
+
+// Delete recent schedules (manual trigger - xóa lịch mới tạo)
+router.delete('/delete-recent', controller.deleteRecentSchedules);
+
 // Update isBooked for a specific time slot by slotId
 router.put('/slot/:slotId', controller.updateDoctorScheduleSlot);
 
