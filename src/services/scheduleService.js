@@ -150,20 +150,6 @@ async function cleanupOldSchedules() {
 }
 
 /**
- * Xóa TẤT CẢ lịch trong hệ thống
- */
-async function deleteAllSchedules() {
-  try {
-    const result = await Schedule.deleteMany({});
-    console.log(`[Schedule Service] Đã xóa TẤT CẢ ${result.deletedCount} lịch`);
-    return result.deletedCount;
-  } catch (error) {
-    console.error('[Schedule Service] Lỗi xóa tất cả lịch:', error);
-    return 0;
-  }
-}
-
-/**
  * Xóa các lịch mới được tạo trong X phút gần đây
  * @param {Number} minutesAgo - Số phút (mặc định 10 phút)
  */
@@ -189,6 +175,5 @@ module.exports = {
   generateDefaultTimeSlots,
   createSchedulesForAllDoctors,
   cleanupOldSchedules,
-  deleteAllSchedules,
   deleteRecentSchedules
 };
