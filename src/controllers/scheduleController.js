@@ -1,5 +1,6 @@
 const Schedule = require('../models/schedule');
 const Doctor = require('../models/doctor');
+const { createSchedulesForAllDoctors, cleanupOldSchedules, deleteAllSchedules, deleteRecentSchedules } = require('../services/scheduleService');
 
 // [GET] /schedules/:doctor_id
 module.exports.getDoctorScheduleByID = async (req, res) => {
@@ -337,6 +338,73 @@ module.exports.deleteDoctorSchedule = async (req, res) => {
         console.error('Error deleting schedule:', error);
         return res.status(500).json({
             message: 'Error deleting schedule',
+            error: error.message
+        });
+    }
+};
+
+// [POST] /schedules/auto-create - API để tạo lịch thủ công
+module.exports.autoCreateSchedules = async (req, res) => {
+    try {
+        const { daysAhead } = req.body;
+        
+        console.log(`[Manual Trigger] Tạo lịch cho ${daysAhead} ngày tiếp theo...`);
+        
+        const result = await createSchedulesForAllDoctors(new Date(), daysAhead);
+        
+        return res.status(200).json({
+            message: 'Auto-create schedules completed',
+            result
+        });
+        
+    } catch (error) {
+        console.error('Error auto-creating schedules:', error);
+        return res.status(500).json({
+            message: 'Error auto-creating schedules',
+            error: error.message
+        });
+    }
+};
+
+// [DELETE] /schedules/cleanup - API để xóa lịch cũ thủ công
+module.exports.cleanupSchedules = async (req, res) => {
+    try {
+        console.log('[Manual Trigger] Dọn dẹp lịch cũ...');
+        
+        const deletedCount = await cleanupOldSchedules();
+        
+        return res.status(200).json({
+            message: 'Cleanup completed',
+            deletedCount
+        });
+        
+    } catch (error) {
+        console.error('Error cleaning up schedules:', error);
+        return res.status(500).json({
+            message: 'Error cleaning up schedules',
+            error: error.message
+        });
+    }
+};
+
+// [DELETE] /schedules/delete-recent - API để xóa lịch mới tạo gần đây
+module.exports.deleteRecentSchedules = async (req, res) => {
+    try {
+        const { minutesAgo } = req.body;
+        
+        console.log(`[Manual Trigger] Xóa lịch được tạo trong ${minutesAgo} phút gần đây...`);
+        
+        const deletedCount = await deleteRecentSchedules(minutesAgo);
+        
+        return res.status(200).json({
+            message: `Deleted schedules created in the last ${minutesAgo} minutes`,
+            deletedCount
+        });
+        
+    } catch (error) {
+        console.error('Error deleting recent schedules:', error);
+        return res.status(500).json({
+            message: 'Error deleting recent schedules',
             error: error.message
         });
     }
