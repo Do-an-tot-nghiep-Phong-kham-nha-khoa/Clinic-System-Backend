@@ -48,7 +48,7 @@ describe("Medicine Tests", () => {
   // Test 2: THÊM MỚI THUỐC KHÔNG THÀNH CÔNG
   it("TC002. Dữ liệu nhập không hợp lệ", async () => {
     const invalidMedicine = {
-      name: "Test Medicine - Invalid",
+      name: "",
       price: -5000,
       quantity: -100,
       expiryDate: new Date("2016-12-31"),

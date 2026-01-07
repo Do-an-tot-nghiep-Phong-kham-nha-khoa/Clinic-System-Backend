@@ -7,6 +7,7 @@ const LabOrder = require("../models/labOrder");
 const Prescription = require("../models/prescription");
 const HealthProfile = require("../models/healthProfile");
 const Invoice = require("../models/invoice");
+const mongoose = require("mongoose");
 
 const {
   getPagingParams,
@@ -30,36 +31,61 @@ exports.createTreatment = async (req, res) => {
       symptoms,
     } = req.body;
 
+    // ✅ 1. Validate ObjectIds
+    const validateId = (id, name) => {
+      if (!mongoose.isValidObjectId(id)) {
+        throw new Error(`Invalid ${name} ID`);
+      }
+    };
+
     if (!healthProfile || !doctor || !treatmentDate || !diagnosis) {
-      return res.status(400).json({ message: "Thiếu thông tin bắt buộc" });
+      throw new Error("Thiếu thông tin bắt buộc");
     }
 
-    // ========== 1. Lấy dữ liệu gốc ==========
-    const hp = await HealthProfile.findById(healthProfile);
-    if (!hp)
-      return res.status(404).json({ message: "Không tìm thấy health profile" });
+    validateId(healthProfile, "HealthProfile");
+    validateId(doctor, "Doctor");
+    if (appointment) validateId(appointment, "Appointment");
+    if (laborder) validateId(laborder, "LabOrder");
+    if (prescription) validateId(prescription, "Prescription");
 
-    const doctorDoc = await Doctor.findById(doctor).populate(
-      "specialtyId",
-      "name"
-    );
-    if (!doctorDoc)
-      return res.status(404).json({ message: "Không tìm thấy bác sĩ" });
+    // ✅ 2. Parallel queries
+    const [hp, doctorDoc, appointmentDoc, labOrderDoc, prescriptionDoc] =
+      await Promise.all([
+        HealthProfile.findById(healthProfile),
+        Doctor.findById(doctor).populate("specialtyId", "name"),
+        appointment ? Appointment.findById(appointment) : null,
+        laborder
+          ? LabOrder.findById(laborder).populate(
+              "items.serviceId",
+              "name price"
+            )
+          : null,
+        prescription
+          ? Prescription.findById(prescription).populate(
+              "items.medicineId",
+              "name unit manufacturer price"
+            )
+          : null,
+      ]);
 
-    let appointmentDoc = null;
-    if (appointment) {
-      appointmentDoc = await Appointment.findById(appointment);
-      await Appointment.findByIdAndUpdate(appointment, {
-        status: "completed",
-      });
-    }
+    // ✅ 3. Early validation
+    if (!hp) throw new Error("Không tìm thấy health profile");
+    if (!doctorDoc) throw new Error("Không tìm thấy bác sĩ");
 
-    // ========== 2. Tạo HealthProfile Snapshot ==========
-    let ownerModelRef = hp.ownerModel === "Patient" ? Patient : FamilyMember;
-    const owner = await ownerModelRef
+    // ✅ 4. Parallel owner + appointment update
+    const ownerModelRef = hp.ownerModel === "Patient" ? Patient : FamilyMember;
+
+    const ownerPromise = ownerModelRef
       .findById(hp.ownerId)
       .select("name dob phone gender");
 
+    const updateAppointmentPromise = appointmentDoc
+      ? Appointment.findByIdAndUpdate(appointment, { status: "completed" })
+      : null;
+
+    const [owner] = await Promise.all([ownerPromise, updateAppointmentPromise]);
+
+    // ✅ 5. Build snapshots
     const healthProfileSnapshot = {
       ownerId: hp.ownerId,
       ownerModel: hp.ownerModel,
@@ -72,7 +98,6 @@ exports.createTreatment = async (req, res) => {
       chronicConditions: hp.chronicConditions || [],
     };
 
-    // ========== 3. Tạo Doctor Snapshot ==========
     const doctorSnapshot = {
       name: doctorDoc.name || "",
       phone: doctorDoc.phone || "",
@@ -80,7 +105,6 @@ exports.createTreatment = async (req, res) => {
       specialtyName: doctorDoc.specialtyId?.name || "",
     };
 
-    // ========== 4. Tạo Appointment Snapshot ==========
     let appointmentSnapshot = null;
     if (appointmentDoc) {
       appointmentSnapshot = {
@@ -90,18 +114,10 @@ exports.createTreatment = async (req, res) => {
       };
     }
 
-    // ========== 5. Tạo LabOrder Snapshot ==========
     let labOrderSnapshot = null;
     let labOrderPrice = 0;
-    if (laborder) {
-      const labOrderDoc = await LabOrder.findById(laborder).populate(
-        "items.serviceId",
-        "name price"
-      );
-      if (!labOrderDoc)
-        return res.status(404).json({ message: "Không tìm thấy LabOrder" });
+    if (labOrderDoc) {
       labOrderPrice = labOrderDoc.totalPrice || 0;
-
       labOrderSnapshot = {
         testTime: labOrderDoc.testTime,
         totalPrice: labOrderDoc.totalPrice,
@@ -115,17 +131,10 @@ exports.createTreatment = async (req, res) => {
       };
     }
 
-    // ========== 6. Tạo Prescription Snapshot ==========
     let prescriptionSnapshot = null;
     let prescriptionPrice = 0;
-    if (prescription) {
-      const prescriptionDoc = await Prescription.findById(
-        prescription
-      ).populate("items.medicineId", "name unit manufacturer price");
-      if (!prescriptionDoc)
-        return res.status(404).json({ message: "Không tìm thấy Prescription" });
+    if (prescriptionDoc) {
       prescriptionPrice = prescriptionDoc.totalPrice || 0;
-
       prescriptionSnapshot = {
         created_at: prescriptionDoc.created_at,
         totalPrice: prescriptionDoc.totalPrice,
@@ -143,11 +152,10 @@ exports.createTreatment = async (req, res) => {
         })),
       };
     }
-
     const totalCost = labOrderPrice + prescriptionPrice;
 
-    // ========== 7. Tạo Treatment với Snapshot ==========
-    const saved = await Treatment.create({
+    // ✅ 6. Create Treatment first
+    const savedTreatment = await Treatment.create({
       healthProfile,
       doctor,
       appointment,
@@ -160,7 +168,6 @@ exports.createTreatment = async (req, res) => {
       temperature,
       symptoms,
       totalCost,
-      // Lưu snapshots
       healthProfileSnapshot,
       doctorSnapshot,
       appointmentSnapshot,
@@ -168,9 +175,29 @@ exports.createTreatment = async (req, res) => {
       prescriptionSnapshot,
     });
 
-    // ========== 8. Trả về dữ liệu từ snapshot (không cần populate) ==========
+    // ✅ 7. Create Invoice with treatmentId (if needed)
+    let createdInvoice = null;
+    if (prescription || laborder) {
+      const invoiceNumber = `INV${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 4)
+        .toUpperCase()}`;
+
+      createdInvoice = await Invoice.create({
+        invoiceNumber,
+        treatmentId: savedTreatment._id,
+        totalPrice: totalCost,
+        status: "Pending",
+        healthProfile_id: healthProfile,
+        issued_at: treatmentDate,
+        prescriptionId: prescription || null,
+        labOrderId: laborder || null,
+      });
+    }
+
+    // ✅ 8. Response
     const responseData = {
-      ...saved.toObject(),
+      ...savedTreatment.toObject(),
       healthProfile: {
         _id: hp._id,
         ...healthProfileSnapshot,
@@ -185,31 +212,7 @@ exports.createTreatment = async (req, res) => {
             ...appointmentSnapshot,
           }
         : null,
-    }; // ========== 9. Tạo Invoice ==========
-    let createdInvoice = null;
-    if (prescription || laborder) {
-      try {
-        const invoiceCount = await Invoice.countDocuments();
-        const invoiceNumber = `INV${Date.now()}-${(invoiceCount + 1)
-          .toString()
-          .padStart(4, "0")}`;
-
-        const invoice = new Invoice({
-          invoiceNumber: invoiceNumber,
-          treatmentId: saved._id,
-          totalPrice: totalCost,
-          status: "Pending",
-          healthProfile_id: healthProfile,
-          issued_at: treatmentDate,
-          prescriptionId: prescription || null,
-          labOrderId: laborder || null,
-        });
-
-        createdInvoice = await invoice.save();
-      } catch (invoiceError) {
-        console.log("Lỗi khi tạo Invoice:", invoiceError.message);
-      }
-    }
+    };
 
     res.status(201).json({
       message: "Tạo treatment thành công",
@@ -222,10 +225,10 @@ exports.createTreatment = async (req, res) => {
         : null,
     });
   } catch (error) {
-    console.log(error);
-    res
-      .status(500)
-      .json({ message: "Internal server error", error: error.message });
+    console.error("CreateTreatment error:", error);
+    res.status(500).json({
+      message: error.message || "Internal server error",
+    });
   }
 };
 
