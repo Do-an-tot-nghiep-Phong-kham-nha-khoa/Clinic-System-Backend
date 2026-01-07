@@ -41,6 +41,7 @@ const invoiceSchema = new mongoose.Schema({
         enum: ["Paid", "Pending", "Cancelled", "Refunded"],
         default: "Pending"
     },
+
     // Payment records (một invoice có thể nhiều payment)
     payments: [
         {
@@ -53,7 +54,21 @@ const invoiceSchema = new mongoose.Schema({
             meta: mongoose.Schema.Types.Mixed,
             paid_at: { type: Date, default: Date.now }
         }
-    ]
+    ],
+
+    // Embedded snapshots
+    healthProfileSnapshot: {
+        type: mongoose.Schema.Types.Mixed,
+        required: false
+    },
+    labOrderSnapshot: {
+        type: mongoose.Schema.Types.Mixed,
+        required: false
+    },
+    prescriptionSnapshot: {
+        type: mongoose.Schema.Types.Mixed,
+        required: false
+    }
 });
 
 module.exports = mongoose.model("Invoice", invoiceSchema);
