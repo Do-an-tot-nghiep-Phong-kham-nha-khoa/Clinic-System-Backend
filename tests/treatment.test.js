@@ -22,6 +22,7 @@ const Doctor = require("../src/models/doctor");
 const Patient = require("../src/models/patient");
 const Account = require("../src/models/account");
 const Role = require("../src/models/role");
+const Specialty = require("../src/models/specialty");
 
 // Setup Express app
 const app = express();
@@ -38,9 +39,16 @@ describe("Treatment, LabOrder & Prescription Tests", () => {
   let testPatient;
   let doctorRole;
   let patientRole;
+  let testSpecialty;
 
   beforeAll(async () => {
     await database.connect();
+
+    // Tạo specialty
+    testSpecialty = await Specialty.create({
+      name: "Nội khoa",
+      description: "Chuyên khoa nội tổng hợp",
+    });
 
     // Tạo roles
     patientRole = await Role.findOne({ name: "patient" });
@@ -85,14 +93,13 @@ describe("Treatment, LabOrder & Prescription Tests", () => {
       status: "active",
       deleted: false,
     });
-
     testDoctor = await Doctor.create({
       name: "BS. Test Doctor",
       dob: new Date("1980-01-01"),
       gender: "male",
       phone: "0987654321",
       email: "testdoctor@clinic.com",
-      specialtyId: new mongoose.Types.ObjectId(),
+      specialtyId: testSpecialty._id,
       accountId: doctorAccount._id,
     });
 
@@ -123,7 +130,6 @@ describe("Treatment, LabOrder & Prescription Tests", () => {
       expiryDate: new Date("2026-12-31"),
     });
   });
-
   afterAll(async () => {
     // Clean up test data
     if (testHealthProfile) {
@@ -140,6 +146,7 @@ describe("Treatment, LabOrder & Prescription Tests", () => {
     if (testDoctor) await Doctor.findByIdAndDelete(testDoctor._id);
     if (testService) await Service.findByIdAndDelete(testService._id);
     if (testMedicine) await Medicine.findByIdAndDelete(testMedicine._id);
+    if (testSpecialty) await Specialty.findByIdAndDelete(testSpecialty._id);
 
     await Account.deleteMany({
       email: { $in: ["testpatient@clinic.com", "testdoctor@clinic.com"] },
@@ -265,14 +272,15 @@ describe("Treatment, LabOrder & Prescription Tests", () => {
     await LabOrder.findByIdAndDelete(testLabOrder._id);
     await Prescription.findByIdAndDelete(testPrescription._id);
   });
-
   it("TC006. Tạo treatment thiếu diagnosis", async () => {
     const res = await request(app).post("/api/treatments").send({
       healthProfile: testHealthProfile._id.toString(),
       doctor: testDoctor._id.toString(),
       treatmentDate: new Date().toISOString(),
+      // Missing diagnosis field
     });
 
     expect(res.status).toBe(400);
+    expect(res.body.message).toContain("Thiếu thông tin bắt buộc");
   });
 });
