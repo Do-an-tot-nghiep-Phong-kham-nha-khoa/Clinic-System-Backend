@@ -3,7 +3,7 @@ const Role = require("../models/role");
 const Patient = require("../models/patient");
 const ForgotPassword = require("../models/forgotPassword");
 const generateHelper = require("../helpers/generate");
-const sendMailHelper = require("../helpers/sendMail");
+const sendMailHelper = require("../services/emailService");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 

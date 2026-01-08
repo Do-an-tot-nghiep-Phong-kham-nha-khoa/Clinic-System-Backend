@@ -3,7 +3,7 @@ const Account = require('../models/account');
 const Role = require('../models/role');
 const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
-const uploadCloudinary = require('../middlewares/uploadCloudinary');
+const uploadCloudinary = require('../services/cloudinaryService');
 
 
 

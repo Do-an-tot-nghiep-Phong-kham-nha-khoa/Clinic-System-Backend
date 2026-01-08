@@ -6,7 +6,7 @@ const Account = require("../models/account");
 const Role = require("../models/role");
 const Specialty = require("../models/specialty");
 const bcrypt = require("bcrypt");
-const uploadCloudinary = require("../middlewares/uploadCloudinary");
+const uploadCloudinary = require("../services/cloudinaryService");
 
 module.exports.createDoctor = async (req, res) => {
   const session = await mongoose.startSession();

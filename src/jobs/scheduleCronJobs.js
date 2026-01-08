@@ -5,15 +5,12 @@ const { createSchedulesForAllDoctors, cleanupOldSchedules } = require('../servic
  * Khởi động các scheduled jobs
  */
 function initScheduledJobs() {
-  console.log('[Cron Jobs] Đang khởi động scheduled jobs...');
   
   // ============================================
   // JOB 1: Tạo lịch mới mỗi ngày lúc 00:01
   // ============================================
   cron.schedule('1 0 * * *', async () => {
-    console.log('\n[Cron Job] Bắt đầu tạo lịch hẹn hàng ngày...');
     const now = new Date();
-    console.log(`[Cron Job] Thời gian hiện tại: ${now.toLocaleString('vi-VN')}`);
     
     try {
       // Tạo lịch cho 7 ngày tiếp theo
@@ -60,9 +57,6 @@ function initScheduledJobs() {
   }, 5000); // Chờ 5 giây sau khi server khởi động
   */
   
-  console.log('[Cron Jobs] ✅ Đã khởi động thành công!');
-  console.log('[Cron Jobs] - Tạo lịch hàng ngày: 00:01 (Asia/Ho_Chi_Minh)');
-  console.log('[Cron Jobs] - Dọn dẹp lịch cũ: Chủ nhật 02:00 (Asia/Ho_Chi_Minh)');
 }
 
 module.exports = { initScheduledJobs };

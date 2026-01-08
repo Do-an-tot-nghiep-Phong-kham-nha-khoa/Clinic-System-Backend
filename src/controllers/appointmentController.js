@@ -4,9 +4,7 @@ const Doctor = require('../models/doctor');
 const Schedule = require('../models/schedule');
 const Specialty = require('../models/specialty');
 const HealthProfile = require('../models/healthProfile');
-const FamilyMember = require('../models/familyMember');
-const Account = require('../models/account');
-const { sendMail } = require('../helpers/sendMail');
+const { sendMail } = require('../services/emailService');
 const {
   createPatientSnapshot,
   createDoctorSnapshot,
